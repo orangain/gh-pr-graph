@@ -52,7 +52,16 @@ Useful options:
 --no-open          print the URL without opening a browser
 --port 8080        use a fixed local port
 --hostname HOST    use a GitHub Enterprise hostname
+--trace-otel[=URL] send gh command traces via OTLP/HTTP
 ```
+
+`--trace-otel` exports traces to `http://localhost:4318/v1/traces` by default.
+Use an explicit collector URL when needed, for example
+`--trace-otel http://localhost:4318` or `--trace-otel=http://localhost:4318`
+(the `/v1/traces` path is added when the
+URL has no path). Each `gh api graphql` span includes the executed arguments,
+exit code, duration, and error status. Trace delivery is asynchronous and
+best-effort, so an unavailable collector does not interrupt the application.
 
 For local extension development:
 

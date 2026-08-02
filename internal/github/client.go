@@ -65,6 +65,11 @@ type Client struct {
 	Hostname string
 	MaxPRs   int
 	MaxDepth int
+	Tracer   CommandTracer
+}
+
+type CommandTracer interface {
+	Command(name string, args []string, start time.Time, processID, exitCode int, commandErr error)
 }
 
 func New(hostname string) *Client { return &Client{Hostname: hostname, MaxPRs: 500, MaxDepth: 20} }
@@ -451,13 +456,33 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 		args = append(args, "--hostname", c.Hostname)
 	}
 	args = append(args, "-f", "query="+query)
-	for key, value := range variables {
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := variables[key]
 		args = append(args, "-F", key+"="+value)
 	}
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	started := time.Now()
 	out, err := cmd.Output()
+	if c.Tracer != nil {
+		processID := 0
+		if cmd.Process != nil {
+			processID = cmd.Process.Pid
+		}
+		exitCode := 0
+		if cmd.ProcessState != nil {
+			exitCode = cmd.ProcessState.ExitCode()
+		} else if err != nil {
+			exitCode = -1
+		}
+		c.Tracer.Command("gh api graphql", args, started, processID, exitCode, err)
+	}
 	if err != nil {
 		return fmt.Errorf("GitHub API: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
