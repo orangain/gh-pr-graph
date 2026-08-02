@@ -7,6 +7,13 @@ type User struct {
 	AvatarURL string `json:"avatarUrl,omitempty"`
 }
 
+type SearchOptions struct {
+	Query           string
+	Authored        bool
+	Assigned        bool
+	ReviewRequested bool
+}
+
 type PullRequest struct {
 	ID                string                `json:"id"`
 	Number            int                   `json:"number"`
@@ -15,6 +22,7 @@ type PullRequest struct {
 	IsDraft           bool                  `json:"isDraft"`
 	UpdatedAt         time.Time             `json:"updatedAt"`
 	Author            User                  `json:"author"`
+	IsBot             bool                  `json:"isBot,omitempty"`
 	RepositoryID      string                `json:"repositoryId"`
 	Repository        string                `json:"repository"`
 	RepositoryURL     string                `json:"repositoryUrl"`

@@ -12,11 +12,11 @@ import (
 	"github.com/orangain/gh-pr-graph/internal/graph"
 )
 
-type fakeLoader struct{ query string }
+type fakeLoader struct{ options graph.SearchOptions }
 
 type progressLoader struct{ fakeLoader }
 
-func (f *progressLoader) LoadProgress(_ context.Context, _ string, progress func(int, int, string)) (graph.Result, error) {
+func (f *progressLoader) LoadProgress(_ context.Context, _ graph.SearchOptions, progress func(int, int, string)) (graph.Result, error) {
 	progress(1, 1, "Searching pull requests")
 	progress(1, 1, "Discovering stacked pull requests")
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
@@ -31,8 +31,8 @@ func (f *progressLoader) InspectPullRequest(_ context.Context, pr *graph.PullReq
 	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: []graph.IncludedPullRequest{{Number: 42}}}, nil
 }
 
-func (f *fakeLoader) Load(_ context.Context, query string) (graph.Result, error) {
-	f.query = query
+func (f *fakeLoader) Load(_ context.Context, options graph.SearchOptions) (graph.Result, error) {
+	f.options = options
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
 }
 
@@ -44,12 +44,22 @@ func TestGraphHandler(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	if loader.query != "is:open" {
-		t.Fatalf("query = %q", loader.query)
+	if loader.options.Query != "is:open" || !loader.options.Authored || !loader.options.Assigned || !loader.options.ReviewRequested {
+		t.Fatalf("options = %+v", loader.options)
 	}
 	var result graph.Result
 	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGraphHandlerReadsExplicitScopes(t *testing.T) {
+	loader := &fakeLoader{}
+	s := New(loader)
+	recorder := httptest.NewRecorder()
+	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph?authored=1&assigned=0&reviewRequested=0", nil))
+	if !loader.options.Authored || loader.options.Assigned || loader.options.ReviewRequested {
+		t.Fatalf("options = %+v", loader.options)
 	}
 }
 

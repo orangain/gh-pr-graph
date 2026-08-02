@@ -10,9 +10,13 @@
   <header>
     <div class="brand">PR Graph</div>
     <form id="search-form">
-      <input id="search" type="search" aria-label="GitHub PR search" placeholder="Default: authored, assigned, or review requested">
+      <label><input id="scope-authored" type="checkbox" checked> Authored</label>
+      <label><input id="scope-assigned" type="checkbox" checked> Assigned</label>
+      <label><input id="scope-review" type="checkbox" checked> Review requested</label>
+      <input id="search" type="search" aria-label="Additional GitHub PR search" placeholder="Add another OR query…">
       <button type="submit">Search</button>
     </form>
+    <label class="auto"><input id="hide-bots" type="checkbox"> Hide bots</label>
     <button id="refresh" type="button" title="Refresh now">↻</button>
     <label class="auto"><input id="auto" type="checkbox" checked> Auto</label>
     <span id="updated" aria-live="polite"></span>

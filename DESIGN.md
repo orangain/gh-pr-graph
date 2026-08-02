@@ -29,7 +29,7 @@ Press Ctrl-C to stop.
 - `--port 8080` でポートを固定できる。listen address は安全のため常に `127.0.0.1` を既定とする。
 - `--repo OWNER/REPO` は対象を限定する。未指定時は複数リポジトリを横断する。
 
-既定の検索集合は以下 3 検索の和集合（PR ID で重複排除）とする。GitHub 検索構文における複雑な OR の解釈差を避けるため、API 内部では別々に実行する。
+既定の検索集合は以下 3 検索の和集合（PR ID で重複排除）とする。画面では各条件を独立したcheckboxとして表示し、GitHub 検索構文における複雑な OR の解釈差を避けるため、API 内部でも別々に実行する。
 
 ```text
 is:open author:@me
@@ -37,13 +37,14 @@ is:open assignee:@me
 is:open review-requested:@me
 ```
 
-画面上部の検索欄では GitHub PR 検索構文を受け付ける。ユーザーが検索を実行した後は、その文字列を単一の検索条件として扱う。空欄に戻すと既定の 3 検索へ戻る。
+画面上部の検索欄では GitHub PR 検索構文を受け付け、選択中のcheckboxに追加する第4のOR条件として扱う。3つのcheckboxをすべて外せば、入力した検索条件だけを実行できる。`Hide bots`は独立した表示filterとし、PRの見落としを避けるため既定はOFFにする。ONの場合はBot authorのノードを隠し、stack途中のBotノードについては前後のedgeを接続して関係を維持する。
 
 ## 3. 画面設計
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
-│ PR Graph  [ is:open team-review-requested:org/team       ] [検索] ↻ │
+│ PR Graph [✓Authored][✓Assigned][✓Review requested] [OR query] [検索] │
+│                                                    [ Hide bots] ↻    │
 │           [Open ✓] [Draft ✓]  Repository: All   Updated 12:34 (自動)│
 ├──────────────────────────────────────────────────────────────────────┤
 │ repo-a/main ──▶ #120 feature A ──▶ #124 feature A-2                  │
@@ -211,7 +212,7 @@ frontend に GitHub token を渡さない。すべての GitHub 通信を Go pro
 
 ### 検索と hydration
 
-GraphQL `search(type: ISSUE)` で node ID の集合を取得し、PR fragment で表示項目を hydrate する。既定条件は 3 query を並列実行し、global node ID で重複排除する。
+GraphQL `search(type: ISSUE)` で node ID の集合を取得し、PR fragment で表示項目を hydrate する。選択された関係条件と任意の第4検索条件をそれぞれ並列実行し、global node ID で重複排除する。
 
 hydrate 後、各 PR の `(headRepository ID, headRefName)` に対して対象 repository の `pullRequests(baseRefName: ..., states: OPEN)` を問い合わせ、下流 PR を breadth-first で再帰取得する。同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめ、branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数はbranch数ではなくstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | downstream` として保持する。
 

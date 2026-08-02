@@ -24,11 +24,11 @@ import (
 var assets embed.FS
 
 type Loader interface {
-	Load(context.Context, string) (graph.Result, error)
+	Load(context.Context, graph.SearchOptions) (graph.Result, error)
 }
 
 type progressiveLoader interface {
-	LoadProgress(context.Context, string, func(current, total int, phase string)) (graph.Result, error)
+	LoadProgress(context.Context, graph.SearchOptions, func(current, total int, phase string)) (graph.Result, error)
 }
 
 type includedLoader interface {
@@ -84,12 +84,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
+	options := searchOptions(r)
 	var requestSpan oteltrace.Span
 	if s.tracer != nil {
 		ctx, span := s.tracer.Start(r.Context(), "GET /api/v1/graph", oteltrace.SpanServer, oteltrace.Attributes{
 			"http.request.method": "GET",
 			"http.route":          "/api/v1/graph",
-			"pr.search_query":     r.URL.Query().Get("q"),
+			"pr.search_query":     options.Query,
 		})
 		r = r.WithContext(ctx)
 		requestSpan = span
@@ -105,10 +106,10 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if loader, ok := s.loader.(progressiveLoader); ok {
-		requestErr = s.graphStream(w, r, loader)
+		requestErr = s.graphStream(w, r, loader, options)
 		return
 	}
-	result, err := s.loader.Load(r.Context(), r.URL.Query().Get("q"))
+	result, err := s.loader.Load(r.Context(), options)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
@@ -121,7 +122,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader progressiveLoader) error {
+func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader progressiveLoader, options graph.SearchOptions) error {
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	flusher, _ := w.(http.Flusher)
@@ -139,7 +140,7 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 			flusher.Flush()
 		}
 	}
-	result, err := loader.LoadProgress(r.Context(), r.URL.Query().Get("q"), report)
+	result, err := loader.LoadProgress(r.Context(), options, report)
 	if err != nil {
 		_ = encoder.Encode(map[string]any{"type": "error", "error": err.Error()})
 		return err
@@ -147,6 +148,18 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Pull requests ready", "percent": 65})
 	_ = encoder.Encode(map[string]any{"type": "result", "result": result})
 	return nil
+}
+
+func searchOptions(r *http.Request) graph.SearchOptions {
+	query := r.URL.Query()
+	explicitScopes := query.Has("authored") || query.Has("assigned") || query.Has("reviewRequested")
+	options := graph.SearchOptions{Query: query.Get("q"), Authored: true, Assigned: true, ReviewRequested: true}
+	if explicitScopes {
+		options.Authored = query.Get("authored") == "1"
+		options.Assigned = query.Get("assigned") == "1"
+		options.ReviewRequested = query.Get("reviewRequested") == "1"
+	}
+	return options
 }
 
 func (s *Server) inspect(w http.ResponseWriter, r *http.Request) {

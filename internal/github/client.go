@@ -43,7 +43,7 @@ var mergedPRPatterns = []*regexp.Regexp{
 
 const prFields = `
   id number title url isDraft updatedAt baseRefName headRefName baseRefOid headRefOid reviewDecision mergeable
-  author{login avatarUrl}
+  author{__typename login avatarUrl}
   repository{id nameWithOwner url defaultBranchRef{name}}
   headRepository{id nameWithOwner}
   assignees(first:20){nodes{login avatarUrl}}
@@ -61,7 +61,10 @@ type Client struct {
 
 func New(hostname string) *Client { return &Client{Hostname: hostname, MaxPRs: 500, MaxDepth: 20} }
 
-type rawUser struct{ Login, AvatarURL string }
+type rawUser struct {
+	Login, AvatarURL string
+	Typename         string `json:"__typename"`
+}
 type rawPR struct {
 	ID, Title, URL, BaseRefName, HeadRefName, BaseRefOid, HeadRefOid, ReviewDecision, Mergeable string
 	Number                                                                                      int
@@ -144,12 +147,34 @@ type includedCandidate struct {
 	number     int
 }
 
-func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
-	return c.LoadProgress(ctx, query, nil)
+type searchSpec struct {
+	query         string
+	reviewRequest bool
 }
 
-func (c *Client) LoadProgress(ctx context.Context, query string, progress func(current, total int, phase string)) (result graph.Result, resultErr error) {
-	ctx, loadSpan := c.startSpan(ctx, "load pull request graph", oteltrace.SpanInternal, oteltrace.Attributes{"pr.search_query": query})
+func buildSearchSpecs(options graph.SearchOptions) []searchSpec {
+	queries := []searchSpec{}
+	if options.Authored {
+		queries = append(queries, searchSpec{query: "is:pr is:open author:@me"})
+	}
+	if options.Assigned {
+		queries = append(queries, searchSpec{query: "is:pr is:open assignee:@me"})
+	}
+	if options.ReviewRequested {
+		queries = append(queries, searchSpec{query: "is:pr is:open review-requested:@me", reviewRequest: true})
+	}
+	if query := strings.TrimSpace(options.Query); query != "" {
+		queries = append(queries, searchSpec{query: query})
+	}
+	return queries
+}
+
+func (c *Client) Load(ctx context.Context, options graph.SearchOptions) (graph.Result, error) {
+	return c.LoadProgress(ctx, options, nil)
+}
+
+func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, progress func(current, total int, phase string)) (result graph.Result, resultErr error) {
+	ctx, loadSpan := c.startSpan(ctx, "load pull request graph", oteltrace.SpanInternal, oteltrace.Attributes{"pr.search_query": options.Query})
 	if loadSpan != nil {
 		defer func() {
 			loadSpan.End(resultErr, oteltrace.Attributes{"pr.node_count": len(result.Nodes), "pr.edge_count": len(result.Edges)})
@@ -160,10 +185,7 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 			progress(current, total, phase)
 		}
 	}
-	queries := []string{query}
-	if strings.TrimSpace(query) == "" {
-		queries = []string{"is:pr is:open author:@me", "is:pr is:open assignee:@me", "is:pr is:open review-requested:@me"}
-	}
+	queries := buildSearchSpecs(options)
 	byID := map[string]*graph.PullRequest{}
 	reviewSeeds := map[string]bool{}
 	viewer := ""
@@ -171,17 +193,16 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	report(0, len(queries), "Searching pull requests")
 	searchCtx, searchSpan := c.startSpan(ctx, "search pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.query_count": len(queries)})
 	type searchResult struct {
-		index    int
-		query    string
+		spec     searchSpec
 		response searchResponse
 		err      error
 	}
 	searchResults := make(chan searchResult, len(queries))
-	for i, q := range queries {
+	for _, spec := range queries {
 		go func() {
 			var response searchResponse
-			err := c.graphql(searchCtx, "search pull requests", searchQuery, map[string]string{"q": q}, &response)
-			searchResults <- searchResult{index: i, query: q, response: response, err: err}
+			err := c.graphql(searchCtx, "search pull requests", searchQuery, map[string]string{"q": spec.query}, &response)
+			searchResults <- searchResult{spec: spec, response: response, err: err}
 		}()
 	}
 	for completed := 0; completed < len(queries); completed++ {
@@ -192,19 +213,19 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 			}
 			return graph.Result{}, search.err
 		}
-		response, i, q := search.response, search.index, search.query
+		response, spec := search.response, search.spec
 		if viewer == "" {
 			viewer = response.Data.Viewer.Login
 		}
 		if response.Data.Search.IssueCount > len(response.Data.Search.Nodes) {
-			warnings = append(warnings, fmt.Sprintf("Search %q has more than 100 results; showing the first 100.", q))
+			warnings = append(warnings, fmt.Sprintf("Search %q has more than 100 results; showing the first 100.", spec.query))
 		}
 		for _, raw := range response.Data.Search.Nodes {
 			pr := convert(raw)
 			if pr == nil {
 				continue
 			}
-			if i == 2 && query == "" {
+			if spec.reviewRequest || hasViewerRequest(raw, viewer) {
 				reviewSeeds[pr.ID] = true
 			}
 			byID[pr.ID] = pr
@@ -585,6 +606,7 @@ func convert(raw rawPR) *graph.PullRequest {
 	pr := &graph.PullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, IsDraft: raw.IsDraft, UpdatedAt: raw.UpdatedAt, BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, BaseCommitSHA: raw.BaseRefOid, HeadCommitSHA: raw.HeadRefOid, ReviewDecision: raw.ReviewDecision, Mergeable: raw.Mergeable}
 	if raw.Author != nil {
 		pr.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
+		pr.IsBot = raw.Author.Typename == "Bot" || strings.HasSuffix(strings.ToLower(raw.Author.Login), "[bot]")
 	}
 	pr.RepositoryID, pr.Repository = raw.Repository.ID, raw.Repository.NameWithOwner
 	pr.RepositoryURL = raw.Repository.URL

@@ -3,10 +3,12 @@ package github
 import (
 	"strings"
 	"testing"
+
+	"github.com/orangain/gh-pr-graph/internal/graph"
 )
 
 func TestConvertReviewSummary(t *testing.T) {
-	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha"}
+	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha", Author: &rawUser{Login: "dependabot[bot]", Typename: "Bot"}}
 	raw.LatestReviews.Nodes = append(raw.LatestReviews.Nodes,
 		struct {
 			State  string
@@ -33,6 +35,9 @@ func TestConvertReviewSummary(t *testing.T) {
 	}
 	if got.HeadCommitSHA != "head-sha" || got.BaseCommitSHA != "base-sha" {
 		t.Fatalf("commit SHAs = %q/%q, want head-sha/base-sha", got.HeadCommitSHA, got.BaseCommitSHA)
+	}
+	if !got.IsBot {
+		t.Fatal("bot author was not detected")
 	}
 }
 
@@ -79,5 +84,16 @@ func TestBuildDownstreamQueryBatchesBranches(t *testing.T) {
 	}
 	if !strings.Contains(query, `baseRefName:"feature/a"`) || !strings.Contains(query, `baseRefName:"feature/b"`) {
 		t.Fatalf("query does not contain both base branches: %s", query)
+	}
+}
+
+func TestBuildSearchSpecsTreatsQueryAsFourthORCondition(t *testing.T) {
+	specs := buildSearchSpecs(graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Query: "repo:orangain/example"})
+	if len(specs) != 4 || specs[3].query != "repo:orangain/example" {
+		t.Fatalf("specs = %+v, want three relationship queries plus custom query", specs)
+	}
+	specs = buildSearchSpecs(graph.SearchOptions{Query: "repo:orangain/example"})
+	if len(specs) != 1 || specs[0].query != "repo:orangain/example" {
+		t.Fatalf("specs = %+v, want only custom query", specs)
 	}
 }
