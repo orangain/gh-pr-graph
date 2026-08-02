@@ -17,6 +17,8 @@ import (
 	"github.com/orangain/gh-pr-graph/internal/oteltrace"
 )
 
+const maxConcurrentGitHubRequests = 6
+
 const searchQuery = `query($q:String!){
   viewer{login}
   search(query:$q,type:ISSUE,first:100){
@@ -176,14 +178,29 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	warnings := []string{}
 	report(0, len(queries), "Searching pull requests")
 	searchCtx, searchSpan := c.startSpan(ctx, "search pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.query_count": len(queries)})
+	type searchResult struct {
+		index    int
+		query    string
+		response searchResponse
+		err      error
+	}
+	searchResults := make(chan searchResult, len(queries))
 	for i, q := range queries {
-		var response searchResponse
-		if err := c.graphql(searchCtx, "search pull requests", searchQuery, map[string]string{"q": q}, &response); err != nil {
+		go func() {
+			var response searchResponse
+			err := c.graphql(searchCtx, "search pull requests", searchQuery, map[string]string{"q": q}, &response)
+			searchResults <- searchResult{index: i, query: q, response: response, err: err}
+		}()
+	}
+	for completed := 0; completed < len(queries); completed++ {
+		search := <-searchResults
+		if search.err != nil {
 			if searchSpan != nil {
-				searchSpan.End(err, nil)
+				searchSpan.End(search.err, nil)
 			}
-			return graph.Result{}, err
+			return graph.Result{}, search.err
 		}
+		response, i, q := search.response, search.index, search.query
 		if viewer == "" {
 			viewer = response.Data.Viewer.Login
 		}
@@ -200,7 +217,7 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 			}
 			byID[pr.ID] = pr
 		}
-		report(i+1, len(queries), "Searching pull requests")
+		report(completed+1, len(queries), "Searching pull requests")
 	}
 	if searchSpan != nil {
 		searchSpan.End(nil, oteltrace.Attributes{"pr.result_count": len(byID)})
@@ -214,62 +231,94 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 		pr    *graph.PullRequest
 		depth int
 	}
-	queue := make([]item, 0, len(byID))
+	frontier := make([]item, 0, len(byID))
 	for _, pr := range byID {
-		queue = append(queue, item{pr, 0})
+		frontier = append(frontier, item{pr, 0})
 	}
 	visitedRefs := map[string]bool{}
 	discovered := 0
-	report(0, len(queue), "Discovering stacked pull requests")
-	downstreamCtx, downstreamSpan := c.startSpan(ctx, "discover stacked pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(queue)})
+	report(0, len(frontier), "Discovering stacked pull requests")
+	downstreamCtx, downstreamSpan := c.startSpan(ctx, "discover stacked pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(frontier)})
 	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests") }
-	for len(queue) > 0 && len(byID) < c.MaxPRs {
-		current := queue[0]
-		queue = queue[1:]
-		discovered++
-		if current.depth >= c.MaxDepth || current.pr.HeadRepository == "" || current.pr.HeadRefName == "" {
-			reportDiscovery()
-			continue
-		}
-		key := current.pr.HeadRepositoryID + "\x00" + current.pr.HeadRefName
-		if visitedRefs[key] {
-			reportDiscovery()
-			continue
-		}
-		visitedRefs[key] = true
-		parts := strings.SplitN(current.pr.HeadRepository, "/", 2)
-		if len(parts) != 2 {
-			reportDiscovery()
-			continue
-		}
-		var response downstreamResponse
-		err := c.graphql(downstreamCtx, "find downstream pull requests", downstreamQuery, map[string]string{"owner": parts[0], "name": parts[1], "base": current.pr.HeadRefName}, &response)
-		if err != nil {
-			warnings = append(warnings, "Could not discover downstream PRs for "+current.pr.HeadRepository+":"+current.pr.HeadRefName)
-			reportDiscovery()
-			continue
-		}
-		if response.Data.Repository == nil {
-			reportDiscovery()
-			continue
-		}
-		for _, raw := range response.Data.Repository.PullRequests.Nodes {
-			if len(byID) >= c.MaxPRs {
-				break
-			}
-			pr := convert(raw)
-			if pr == nil {
+	type downstreamJob struct {
+		item  item
+		owner string
+		name  string
+	}
+	type downstreamResult struct {
+		job      downstreamJob
+		response downstreamResponse
+		err      error
+	}
+	for len(frontier) > 0 && len(byID) < c.MaxPRs {
+		jobs := make([]downstreamJob, 0, len(frontier))
+		for _, current := range frontier {
+			discovered++
+			if current.depth >= c.MaxDepth || current.pr.HeadRepository == "" || current.pr.HeadRefName == "" {
+				reportDiscovery()
 				continue
 			}
-			if _, exists := byID[pr.ID]; exists {
+			key := current.pr.HeadRepositoryID + "\x00" + current.pr.HeadRefName
+			if visitedRefs[key] {
+				reportDiscovery()
 				continue
 			}
-			pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
-			pr.Source = "downstream"
-			byID[pr.ID] = pr
-			queue = append(queue, item{pr, current.depth + 1})
+			visitedRefs[key] = true
+			parts := strings.SplitN(current.pr.HeadRepository, "/", 2)
+			if len(parts) != 2 {
+				reportDiscovery()
+				continue
+			}
+			jobs = append(jobs, downstreamJob{item: current, owner: parts[0], name: parts[1]})
 		}
-		reportDiscovery()
+		jobCh := make(chan downstreamJob, len(jobs))
+		results := make(chan downstreamResult, len(jobs))
+		for _, job := range jobs {
+			jobCh <- job
+		}
+		close(jobCh)
+		workers := maxConcurrentGitHubRequests
+		if len(jobs) < workers {
+			workers = len(jobs)
+		}
+		for range workers {
+			go func() {
+				for job := range jobCh {
+					var response downstreamResponse
+					err := c.graphql(downstreamCtx, "find downstream pull requests", downstreamQuery, map[string]string{"owner": job.owner, "name": job.name, "base": job.item.pr.HeadRefName}, &response)
+					results <- downstreamResult{job: job, response: response, err: err}
+				}
+			}()
+		}
+		next := []item{}
+		for range jobs {
+			result := <-results
+			if result.err != nil {
+				warnings = append(warnings, "Could not discover downstream PRs for "+result.job.item.pr.HeadRepository+":"+result.job.item.pr.HeadRefName)
+				reportDiscovery()
+				continue
+			}
+			if result.response.Data.Repository != nil {
+				for _, raw := range result.response.Data.Repository.PullRequests.Nodes {
+					if len(byID) >= c.MaxPRs {
+						break
+					}
+					pr := convert(raw)
+					if pr == nil {
+						continue
+					}
+					if _, exists := byID[pr.ID]; exists {
+						continue
+					}
+					pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+					pr.Source = "downstream"
+					byID[pr.ID] = pr
+					next = append(next, item{pr, result.job.item.depth + 1})
+				}
+			}
+			reportDiscovery()
+		}
+		frontier = next
 	}
 	if len(byID) >= c.MaxPRs {
 		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
@@ -302,7 +351,7 @@ func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.Pull
 	var mu sync.Mutex
 	completed := 0
 	errorsSeen := []string{}
-	workers := 6
+	workers := maxConcurrentGitHubRequests
 	if len(prs) < workers {
 		workers = len(prs)
 	}
