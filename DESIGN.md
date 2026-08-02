@@ -358,7 +358,7 @@ docs/
 7. author または assignee の PR は青、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
-10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
+10. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
 11. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 

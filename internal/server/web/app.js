@@ -45,14 +45,22 @@ function layoutLane(lane,repoNode,prs,result){
  let maxRank=0;for(const node of prs){maxRank=Math.max(maxRank,node.rank);const el=element(node.id);if(!el)continue;el.style.left=`${node.rank*(nodeWidth+horizontalGap)}px`;el.style.top=`${positions.get(node.id)??0}px`}
  lane.style.width=`${(maxRank+1)*nodeWidth+maxRank*horizontalGap}px`;lane.style.height=`${laneHeight}px`
 }
+function captureViewport(){
+ const bounds=viewport.getBoundingClientRect(),centerX=bounds.left+bounds.width/2,centerY=bounds.top+bounds.height/2;let anchor=null,distance=Infinity;
+ for(const node of lanes.querySelectorAll('.node[data-id]')){const rect=node.getBoundingClientRect();if(rect.right<bounds.left||rect.left>bounds.right||rect.bottom<bounds.top||rect.top>bounds.bottom)continue;const value=(rect.left+rect.width/2-centerX)**2+(rect.top+rect.height/2-centerY)**2;if(value<distance){distance=value;anchor={id:node.dataset.id,left:rect.left-bounds.left,top:rect.top-bounds.top}}}
+ return {left:viewport.scrollLeft,top:viewport.scrollTop,anchor}
+}
+function restoreViewport(state){
+ viewport.scrollLeft=state.left;viewport.scrollTop=state.top;if(!state.anchor)return;const node=lanes.querySelector(`[data-id="${CSS.escape(state.anchor.id)}"]`);if(!node)return;const bounds=viewport.getBoundingClientRect(),rect=node.getBoundingClientRect();viewport.scrollLeft+=rect.left-bounds.left-state.anchor.left;viewport.scrollTop+=rect.top-bounds.top-state.anchor.top
+}
 function render(result){
- data=result;const oldX=viewport.scrollLeft,oldY=viewport.scrollTop;lanes.innerHTML='';
+ const viewportState=captureViewport();data=result;lanes.innerHTML='';
  const repoNodes=result.nodes.filter(node=>node.kind==='repository');
  const prsByRepo=new Map();for(const node of result.nodes){if(node.kind!=='pullRequest')continue;const id=node.pullRequest.repositoryId;if(!prsByRepo.has(id))prsByRepo.set(id,[]);prsByRepo.get(id).push(node)}
  for(const repoNode of repoNodes){
   const prs=prsByRepo.get(repoNode.repository.id)||[],lane=document.createElement('section');lane.className='repo-lane';lane.innerHTML=nodeHTML(repoNode)+prs.map(nodeHTML).join('');lanes.append(lane);layoutLane(lane,repoNode,prs,result)
  }
- empty.hidden=result.nodes.length>0;warnings.textContent=(result.warnings||[]).join(' ');requestAnimationFrame(()=>{drawEdges();viewport.scrollLeft=oldX;viewport.scrollTop=oldY})
+ empty.hidden=result.nodes.length>0;warnings.textContent=(result.warnings||[]).join(' ');requestAnimationFrame(()=>{restoreViewport(viewportState);drawEdges()})
 }
 function applyIncluded(updates){
  if(!updates?.length)return;const byID=new Map(updates.map(update=>[update.pullRequestId,update.includedPullRequests]));for(const node of data.nodes){if(node.kind==='pullRequest'&&byID.has(node.pullRequest.id))node.pullRequest.includedPullRequests=byID.get(node.pullRequest.id)}render(data)
