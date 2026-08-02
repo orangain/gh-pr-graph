@@ -1,22 +1,10 @@
 # gh pr-graph
 
-`gh pr-graph` is a GitHub CLI extension that opens a local web UI and displays pull requests as a directed graph based on their base and head branches.
+`gh pr-graph` turns the pull requests that need your attention into one visual workspace. Run one command to see every open PR you authored, were assigned to, or were asked to review—across repositories—without assembling filters or checking separate GitHub pages.
 
-The current MVP provides:
+As AI makes it easier to develop multiple changes in parallel, stacked pull requests are becoming larger and more common. A flat PR list hides which change depends on which. `gh pr-graph` follows base and head branches recursively and draws those relationships as a directed graph, making the review order, downstream work, and the path back to each repository immediately visible.
 
-- Default discovery of open PRs authored by, assigned to, or requesting review from you
-- GitHub PR search syntax from the UI
-- Recursive discovery of open downstream stacked PRs
-- Blue / green / gray nodes for your PRs, review requests, and other PRs
-- Thick borders for ready PRs and thin borders plus a badge for drafts
-- Aggregated review, CI, and conflict status
-- Collapsible discovery of merged PRs detected from a PR's commit messages
-- Layout-stable initial rendering after cached Included PR candidate inspection
-- Per-containing-PR in-memory caching for Included PR details
-- A visible loading progress indicator during GitHub API requests
-- Repository lanes that keep repository-to-PR edges short
-- Five-minute auto refresh that pauses in hidden or offline tabs
-- A single Go binary with an embedded web UI; GitHub credentials never enter the browser
+Color-coded ownership and compact review, CI, conflict, and draft signals help you decide what needs action next. Merged PRs included in a change remain available in collapsible context, while automatic refresh keeps the workspace current. Everything runs locally through your authenticated `gh` CLI; GitHub credentials are never passed to the browser.
 
 ## Requirements
 
