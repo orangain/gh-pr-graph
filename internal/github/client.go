@@ -26,6 +26,22 @@ const downstreamQuery = `query($owner:String!,$name:String!,$base:String!){
   }
 }`
 
+const includedQuery = `query($id:ID!,$after:String){
+  node(id:$id){... on PullRequest{
+    id
+    commits(first:100,after:$after){
+      pageInfo{hasNextPage endCursor}
+      nodes{commit{
+        oid
+        associatedPullRequests(first:10){
+          pageInfo{hasNextPage}
+          nodes{id number title url merged mergedAt author{login avatarUrl} mergeCommit{oid}}
+        }
+      }}
+    }
+  }}
+}`
+
 const prFields = `
   id number title url isDraft updatedAt baseRefName headRefName reviewDecision mergeable
   author{login avatarUrl}
@@ -91,6 +107,36 @@ type searchResponse struct {
 type downstreamResponse struct {
 	Data struct {
 		Repository *struct{ PullRequests struct{ Nodes []rawPR } }
+	}
+}
+
+type includedResponse struct {
+	Data struct {
+		Node *struct {
+			ID      string
+			Commits struct {
+				PageInfo struct {
+					HasNextPage bool
+					EndCursor   string
+				}
+				Nodes []struct {
+					Commit struct {
+						OID                    string
+						AssociatedPullRequests struct {
+							PageInfo struct{ HasNextPage bool }
+							Nodes    []struct {
+								ID, Title, URL string
+								Number         int
+								Merged         bool
+								MergedAt       *time.Time
+								Author         *rawUser
+								MergeCommit    *struct{ OID string }
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -188,6 +234,50 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 		prs = append(prs, pr)
 	}
 	return graph.Build(prs, warnings), nil
+}
+
+func (c *Client) Included(ctx context.Context, id string) (graph.IncludedResult, error) {
+	result := graph.IncludedResult{}
+	seen := map[string]bool{}
+	after := ""
+	for page := 0; page < 3; page++ {
+		variables := map[string]string{"id": id}
+		if after != "" {
+			variables["after"] = after
+		}
+		var response includedResponse
+		if err := c.graphql(ctx, includedQuery, variables, &response); err != nil {
+			return graph.IncludedResult{}, err
+		}
+		if response.Data.Node == nil {
+			return graph.IncludedResult{}, fmt.Errorf("pull request not found")
+		}
+		for _, commitNode := range response.Data.Node.Commits.Nodes {
+			associated := commitNode.Commit.AssociatedPullRequests
+			if associated.PageInfo.HasNextPage {
+				result.Truncated = true
+			}
+			for _, candidate := range associated.Nodes {
+				// Only count an exact merge commit contained in this PR's commit set.
+				if candidate.ID == id || !candidate.Merged || candidate.MergeCommit == nil || candidate.MergeCommit.OID != commitNode.Commit.OID || seen[candidate.ID] {
+					continue
+				}
+				seen[candidate.ID] = true
+				included := graph.IncludedPullRequest{ID: candidate.ID, Number: candidate.Number, Title: candidate.Title, URL: candidate.URL, MergedAt: candidate.MergedAt}
+				if candidate.Author != nil {
+					included.Author = graph.User{Login: candidate.Author.Login, AvatarURL: candidate.Author.AvatarURL}
+				}
+				result.PullRequests = append(result.PullRequests, included)
+			}
+		}
+		pageInfo := response.Data.Node.Commits.PageInfo
+		if !pageInfo.HasNextPage {
+			return result, nil
+		}
+		after = pageInfo.EndCursor
+	}
+	result.Truncated = true
+	return result, nil
 }
 
 func convert(raw rawPR) *graph.PullRequest {

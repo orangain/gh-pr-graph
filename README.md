@@ -10,6 +10,7 @@ The current MVP provides:
 - Blue / green / gray nodes for your PRs, review requests, and other PRs
 - Thick borders for ready PRs and thin borders plus a badge for drafts
 - Aggregated review, CI, and conflict status
+- Lazy, collapsible discovery of merged PRs included in a PR's commits
 - A visible loading progress indicator during GitHub API requests
 - Repository lanes that keep repository-to-PR edges short
 - Five-minute auto refresh that pauses in hidden or offline tabs
@@ -82,4 +83,4 @@ MIT. See [LICENSE](LICENSE).
 
 ## Status
 
-This is an initial implementation of Phase 1 in [DESIGN.md](DESIGN.md). Included/merged PR folding, search pagination beyond the first 100 results, richer team-review aggregation, and release automation remain to be implemented.
+This is an initial implementation based on [DESIGN.md](DESIGN.md). Search pagination beyond the first 100 results and richer team-review aggregation remain to be implemented.

@@ -24,6 +24,7 @@ var assets embed.FS
 
 type Loader interface {
 	Load(context.Context, string) (graph.Result, error)
+	Included(context.Context, string) (graph.IncludedResult, error)
 }
 
 type Server struct {
@@ -47,6 +48,7 @@ func (s *Server) Start(port int) (string, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/graph", s.graph)
+	mux.HandleFunc("GET /api/v1/included", s.included)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.Handle("/", http.FileServer(http.FS(web)))
 	s.http = &http.Server{Handler: securityHeaders(mux), ReadHeaderTimeout: 5 * time.Second}
@@ -56,6 +58,24 @@ func (s *Server) Start(port int) (string, error) {
 		}
 	}()
 	return "http://" + ln.Addr().String(), nil
+}
+
+func (s *Server) included(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "id is required"})
+		return
+	}
+	result, err := s.loader.Included(r.Context(), id)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

@@ -60,6 +60,20 @@ type Result struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type IncludedPullRequest struct {
+	ID       string     `json:"id"`
+	Number   int        `json:"number"`
+	Title    string     `json:"title"`
+	URL      string     `json:"url"`
+	Author   User       `json:"author"`
+	MergedAt *time.Time `json:"mergedAt,omitempty"`
+}
+
+type IncludedResult struct {
+	PullRequests []IncludedPullRequest `json:"pullRequests"`
+	Truncated    bool                  `json:"truncated,omitempty"`
+}
+
 func RelationFor(pr *PullRequest, viewer string, directlyReviewRequested bool) string {
 	if pr.Author.Login == viewer {
 		return "mine"

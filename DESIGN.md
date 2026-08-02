@@ -182,7 +182,7 @@ GitHub API だけで全候補に compare API を実行すると rate limit が�
 4. squash/rebase merge は merge commit だけでは完全判定できないため、初期版では `exact` と断定せず `possibly included` とする。
 5. 250 commits を超えた場合は結果を `truncated: true` とし、UI に「一部のみ」と表示する。
 
-この機能は高コストなので、グラフ本体の表示後に `/api/pr/:id/included` から lazy load する。結果は head/base OID を key にキャッシュする。
+この機能は高コストなので、グラフ本体の表示後に `/api/v1/included?id=:id` から lazy load する。タイトル右端のbranch iconを押したときだけ取得し、結果は画面内で保持する。
 
 ## 6. アーキテクチャ
 

@@ -18,6 +18,10 @@ func (f *fakeLoader) Load(_ context.Context, query string) (graph.Result, error)
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
 }
 
+func (f *fakeLoader) Included(_ context.Context, _ string) (graph.IncludedResult, error) {
+	return graph.IncludedResult{}, nil
+}
+
 func TestGraphHandler(t *testing.T) {
 	loader := &fakeLoader{}
 	s := New(loader)
@@ -41,5 +45,14 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if got := recorder.Header().Get("Content-Security-Policy"); got == "" {
 		t.Fatal("Content-Security-Policy is missing")
+	}
+}
+
+func TestIncludedHandlerRequiresID(t *testing.T) {
+	s := New(&fakeLoader{})
+	recorder := httptest.NewRecorder()
+	s.included(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/included", nil))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
