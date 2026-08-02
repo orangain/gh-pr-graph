@@ -82,8 +82,8 @@ gh pr-graph --trace-otel
 
 Open [http://localhost:16686](http://localhost:16686), select the
 `gh-pr-graph` service, and click **Find Traces**. `GET /api/v1/graph` covers PR
-search and stacked PR discovery; the subsequent `POST /api/v1/included` covers
-commit inspection and the batched Included PR query.
+search, stacked PR discovery, and commit inspection for Included PR candidates;
+the subsequent `POST /api/v1/included` covers the batched candidate detail query.
 
 Stop the local collector when finished:
 

@@ -168,9 +168,9 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-メイングラフを先に返して描画した後、各PRの差分commit messageを最大300件まで自動走査する。`Merge pull request #123`や`Merged ... #123`を検出した場合だけ、同じrepositoryの対象番号についてPR情報を追加取得する。候補は動的GraphQL aliasを使った1回のqueryへまとめ、取得したPRが実際にmergedの場合だけIncluded PRとして採用する。
+初期ロード中に各PRの差分commit messageを最大300件まで走査し、`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出する。この時点で件数を含むメイングラフを返すため、初期描画時からトグルを配置できる。描画後、同じrepositoryの番号についてタイトル、URL、作者などのPR情報を動的GraphQL aliasを使った1回のqueryで追加取得する。詳細を取得できない番号も初期スロットを維持し、後段更新によるレイアウトシフトを発生させない。
 
-初期graph responseにはIncluded PRを含めず、browserの初期描画完了後に`POST /api/v1/included`を自動実行して差分を反映する。Included PRが1件以上あるノードだけにbranch iconを表示し、クリックでは取得済み一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
+初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を自動実行して詳細を反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
 ## 6. アーキテクチャ
 
@@ -358,7 +358,7 @@ docs/
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
-11. メイングラフはIncluded PR走査前に描画され、その時点でprogress barを100%にして閉じる。描画直後にIncluded PR走査を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
+11. Included PR候補番号の走査完了後にメイングラフを描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断

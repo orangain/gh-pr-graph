@@ -210,11 +210,11 @@ func progressPercent(current, total int, phase string) int {
 	}
 	switch phase {
 	case "Searching pull requests":
-		return int(ratio * 25)
+		return int(ratio * 20)
 	case "Discovering stacked pull requests":
-		return 25 + int(ratio*75)
+		return 20 + int(ratio*45)
 	case "Inspecting included pull requests":
-		return 65 + int(ratio*25)
+		return 65 + int(ratio*35)
 	case "Fetching included pull requests":
 		return 90 + int(ratio*10)
 	case "Pull requests ready":

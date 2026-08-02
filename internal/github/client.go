@@ -131,7 +131,6 @@ type commitMessagesResponse struct {
 type rawIncludedPR struct {
 	ID, Title, URL string
 	Number         int
-	Merged         bool
 	MergedAt       *time.Time
 	Author         *rawUser
 }
@@ -316,6 +315,13 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	for _, pr := range byID {
 		prs = append(prs, pr)
 	}
+	candidates, err := c.discoverIncludedCandidates(ctx, prs, report)
+	if err != nil {
+		return graph.Result{}, err
+	}
+	for _, pr := range prs {
+		pr.IncludedPRs = candidates[pr.ID]
+	}
 	return graph.Build(prs, warnings), nil
 }
 
@@ -339,14 +345,60 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 			progress(current, total, phase)
 		}
 	}
-	ctx, phaseSpan := c.startSpan(ctx, "inspect included pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.count": len(prs)})
+	ctx, phaseSpan := c.startSpan(ctx, "hydrate included pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.count": len(prs)})
 	if phaseSpan != nil {
 		defer func() { phaseSpan.End(resultErr, oteltrace.Attributes{"pr.update_count": len(updates)}) }()
 	}
 	if len(prs) == 0 {
-		report(1, 1, "Inspecting included pull requests")
 		report(1, 1, "Fetching included pull requests")
 		return updates, nil
+	}
+	parentsByCandidate := map[includedCandidate][]string{}
+	for _, pr := range prs {
+		for _, included := range pr.IncludedPRs {
+			key := includedCandidate{repository: pr.Repository, number: included.Number}
+			parentsByCandidate[key] = append(parentsByCandidate[key], pr.ID)
+		}
+	}
+	if len(parentsByCandidate) == 0 {
+		report(1, 1, "Fetching included pull requests")
+		return updates, nil
+	}
+	report(0, 1, "Fetching included pull requests")
+	included, err := c.fetchIncludedPullRequests(ctx, parentsByCandidate)
+	if err != nil {
+		return nil, err
+	}
+	report(1, 1, "Fetching included pull requests")
+	for _, parent := range prs {
+		if len(parent.IncludedPRs) == 0 {
+			continue
+		}
+		detailsByNumber := map[int]graph.IncludedPullRequest{}
+		for _, detail := range included[parent.ID] {
+			detailsByNumber[detail.Number] = detail
+		}
+		hydrated := make([]graph.IncludedPullRequest, 0, len(parent.IncludedPRs))
+		for _, candidate := range parent.IncludedPRs {
+			if detail, ok := detailsByNumber[candidate.Number]; ok {
+				hydrated = append(hydrated, detail)
+			} else {
+				hydrated = append(hydrated, candidate)
+			}
+		}
+		updates = append(updates, graph.IncludedUpdate{PullRequestID: parent.ID, IncludedPullRequests: hydrated})
+	}
+	sort.Slice(updates, func(i, j int) bool { return updates[i].PullRequestID < updates[j].PullRequestID })
+	return updates, nil
+}
+
+func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (map[string][]graph.IncludedPullRequest, error) {
+	candidates := map[string][]graph.IncludedPullRequest{}
+	if len(prs) == 0 {
+		if progress != nil {
+			progress(1, 1, "Inspecting included pull requests")
+		}
+		return candidates, nil
 	}
 	type job struct{ pr *graph.PullRequest }
 	type scanResult struct {
@@ -379,7 +431,6 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 		wg.Wait()
 		close(results)
 	}()
-	parentsByCandidate := map[includedCandidate][]string{}
 	errorsSeen := 0
 	completed := 0
 	for result := range results {
@@ -388,31 +439,20 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 			errorsSeen++
 		} else {
 			for _, number := range result.numbers {
-				key := includedCandidate{repository: result.pr.Repository, number: number}
-				parentsByCandidate[key] = append(parentsByCandidate[key], result.pr.ID)
+				candidates[result.pr.ID] = append(candidates[result.pr.ID], graph.IncludedPullRequest{Number: number})
 			}
 		}
-		report(completed, len(prs), "Inspecting included pull requests")
+		if progress != nil {
+			progress(completed, len(prs), "Inspecting included pull requests")
+		}
 	}
 	if errorsSeen > 0 {
 		return nil, fmt.Errorf("%d of %d commit scans failed", errorsSeen, len(prs))
 	}
-	if len(parentsByCandidate) == 0 {
-		report(1, 1, "Fetching included pull requests")
-		return updates, nil
+	for parentID := range candidates {
+		sort.Slice(candidates[parentID], func(i, j int) bool { return candidates[parentID][i].Number < candidates[parentID][j].Number })
 	}
-	report(0, 1, "Fetching included pull requests")
-	included, err := c.fetchIncludedPullRequests(ctx, parentsByCandidate)
-	if err != nil {
-		return nil, err
-	}
-	report(1, 1, "Fetching included pull requests")
-	for parentID, prs := range included {
-		sort.Slice(prs, func(i, j int) bool { return prs[i].Number < prs[j].Number })
-		updates = append(updates, graph.IncludedUpdate{PullRequestID: parentID, IncludedPullRequests: prs})
-	}
-	sort.Slice(updates, func(i, j int) bool { return updates[i].PullRequestID < updates[j].PullRequestID })
-	return updates, nil
+	return candidates, nil
 }
 
 func (c *Client) fetchIncludedPullRequests(ctx context.Context, parentsByCandidate map[includedCandidate][]string) (map[string][]graph.IncludedPullRequest, error) {
@@ -435,7 +475,7 @@ func (c *Client) fetchIncludedPullRequests(ctx context.Context, parentsByCandida
 			return nil, fmt.Errorf("decode included pull request: %w", err)
 		}
 		pr := repository.PullRequest
-		if pr == nil || !pr.Merged {
+		if pr == nil {
 			continue
 		}
 		included := graph.IncludedPullRequest{ID: pr.ID, Number: pr.Number, Title: pr.Title, URL: pr.URL, MergedAt: pr.MergedAt}
@@ -470,7 +510,7 @@ func buildIncludedPullRequestsQuery(parentsByCandidate map[includedCandidate][]s
 		}
 		alias := "r" + strconv.Itoa(i)
 		byAlias[alias] = candidate
-		fmt.Fprintf(&query, "%s:repository(owner:%s,name:%s){pr:pullRequest(number:%d){id number title url merged mergedAt author{login avatarUrl}}}", alias, strconv.Quote(parts[0]), strconv.Quote(parts[1]), candidate.number)
+		fmt.Fprintf(&query, "%s:repository(owner:%s,name:%s){pr:pullRequest(number:%d){id number title url mergedAt author{login avatarUrl}}}", alias, strconv.Quote(parts[0]), strconv.Quote(parts[1]), candidate.number)
 	}
 	query.WriteByte('}')
 	return query.String(), byAlias

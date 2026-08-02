@@ -64,9 +64,9 @@ func TestProgressPercent(t *testing.T) {
 		phase          string
 		want           int
 	}{
-		{1, 2, "Searching pull requests", 12},
-		{1, 2, "Discovering stacked pull requests", 62},
-		{1, 2, "Inspecting included pull requests", 77},
+		{1, 2, "Searching pull requests", 10},
+		{1, 2, "Discovering stacked pull requests", 42},
+		{1, 2, "Inspecting included pull requests", 82},
 		{1, 2, "Fetching included pull requests", 95},
 		{1, 1, "Complete", 100},
 	}
