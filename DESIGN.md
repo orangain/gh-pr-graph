@@ -102,6 +102,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 - graph 表示完了から 5 分ごとに現在の検索条件を再取得する。
 - header に最終更新時刻、次回更新までの時間、自動更新の on/off toggle を表示する。既定は on。
+- 初回取得と更新の間は header 直下に progress bar と `Loading pull requests…` を表示し、処理中であることを常に確認できるようにする。
 - browser tab が非表示または端末が offline の間は polling を止め、再表示／online 復帰時に前回更新から 5 分以上経っていれば即座に更新する。
 - 更新中も現在の graph を残し、header の小さな progress 表示だけを出す。成功後は node/edge の差分を反映し、pan、zoom、選択、折りたたみ状態を維持する。
 - 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は exponential backoff とし、手動更新は常に可能にする。
@@ -156,7 +157,9 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 ### レイアウト
 
 - rank 0 に repository root、依存を 1 rank ずつ右へ置く
-- 同一 rank 内は repository、stack root、PR number の順で安定ソートする
+- repository ごとに独立した横方向の lane を作り、その repository node と PR node を同じ lane 内へ配置する
+- lane 内では repository root と rank 1、その後続 rank の垂直中心を揃え、リポジトリ数が多くても root edge が短くなるようにする
+- 同一 repository / rank 内は stack root、PR number の順で安定ソートする
 - edge crossing を減らすため barycenter ordering を適用する
 - 初期版は `@xyflow/react` の custom node + `dagre` を推奨する
 - 500 ノードを超える場合は描画を仮想化するか、検索条件の絞り込みを促す

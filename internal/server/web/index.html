@@ -17,13 +17,16 @@
     <label class="auto"><input id="auto" type="checkbox" checked> Auto</label>
     <span id="updated" aria-live="polite"></span>
   </header>
+  <div id="progress" class="progress" role="progressbar" aria-label="Loading pull requests" aria-valuetext="Loading pull requests" hidden>
+    <div class="progress-bar"></div>
+    <span>Loading pull requests…</span>
+  </div>
   <div id="warnings" role="status"></div>
   <main id="viewport">
-    <div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="columns"></div></div>
+    <div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="lanes"></div></div>
     <div id="empty" hidden>No pull requests found. Try a different search.</div>
   </main>
   <div id="error" role="alert" hidden></div>
   <script src="/app.js" defer></script>
 </body>
 </html>
-

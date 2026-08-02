@@ -10,6 +10,8 @@ The current MVP provides:
 - Blue / green / gray nodes for your PRs, review requests, and other PRs
 - Thick borders for ready PRs and thin borders plus a badge for drafts
 - Aggregated review, CI, and conflict status
+- A visible loading progress indicator during GitHub API requests
+- Repository lanes that keep repository-to-PR edges short
 - Five-minute auto refresh that pauses in hidden or offline tabs
 - A single Go binary with an embedded web UI; GitHub credentials never enter the browser
 
@@ -47,4 +49,3 @@ The server only listens on `127.0.0.1`. Press Ctrl-C in the terminal to stop it.
 ## Status
 
 This is an initial implementation of Phase 1 in [DESIGN.md](DESIGN.md). Included/merged PR folding, search pagination beyond the first 100 results, richer team-review aggregation, and release automation remain to be implemented.
-
