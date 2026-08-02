@@ -37,7 +37,7 @@ is:open assignee:@me
 is:open review-requested:@me
 ```
 
-画面上部の検索欄では GitHub PR 検索構文を受け付け、選択中のcheckboxに追加する第4のOR条件として扱う。3つのcheckboxをすべて外せば、入力した検索条件だけを実行できる。`Hide bots`は独立した表示filterとし、PRの見落としを避けるため既定はOFFにする。ONの場合はBot authorのノードを隠し、stack途中のBotノードについては前後のedgeを接続して関係を維持する。
+画面上部の検索欄では GitHub PR 検索構文を受け付け、選択中のcheckboxに追加する第4のOR条件として扱う。3つのcheckboxをすべて外せば、入力した検索条件だけを実行できる。`Hide bots`は独立したclient-side表示filterとし、PRの見落としを避けるため既定はOFFにする。状態はURLへ保存せず、ページを開くたびにOFFへ戻す。切り替え時にAPIを再取得せず、保持した元graphから即座に再描画する。ONの場合はメイングラフ上のBot authorノードだけを隠し、stack途中のBotノードについては前後のedgeを接続して関係を維持する。Included PR一覧内のBot PRは表示したままにする。
 
 ## 3. 画面設計
 
@@ -112,7 +112,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 現在の PR の head 履歴に取り込まれている merged PR がある場合だけ、status rowの下にOcticonsの`chevron-right`と`Included PRs (N)`を表示する。クリックで`chevron-down`へ変化し、番号、タイトル、リンクの一覧を展開する。
 
-表示状態（検索文字列、filter、折りたたみ、viewport）は URL query parameter に保存し、再読み込みと URL 共有に耐えるようにする。ただしサーバーはローカルなので URL 自体を他端末から開く用途は想定しない。
+検索文字列と関係scopeは URL query parameter に保存し、再読み込みと URL 共有に耐えるようにする。`Hide bots`、折りたたみ、viewportはセッション中だけの状態とする。ただしサーバーはローカルなので URL 自体を他端末から開く用途は想定しない。
 
 ## 4. グラフの意味
 
