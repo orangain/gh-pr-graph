@@ -100,3 +100,13 @@ func TestIncludedStreamsProgressAndUpdates(t *testing.T) {
 		t.Fatalf("unexpected stream: %s", body)
 	}
 }
+
+func TestIncludedRequiresOneContainingPullRequest(t *testing.T) {
+	s := New(&progressLoader{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/included", strings.NewReader(`{"pullRequests":[]}`))
+	s.included(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}

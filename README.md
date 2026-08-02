@@ -12,6 +12,7 @@ The current MVP provides:
 - Aggregated review, CI, and conflict status
 - Collapsible discovery of merged PRs detected from a PR's commit messages
 - Early graph rendering followed by automatic batched Included PR hydration
+- Per-containing-PR in-memory caching for Included PR details
 - A visible loading progress indicator during GitHub API requests
 - Repository lanes that keep repository-to-PR edges short
 - Five-minute auto refresh that pauses in hidden or offline tabs

@@ -158,12 +158,18 @@ func (s *Server) included(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	if len(request.PullRequests) != 1 {
+		http.Error(w, "exactly one containing pull request is required", http.StatusBadRequest)
+		return
+	}
 	var requestSpan oteltrace.Span
 	if s.tracer != nil {
 		ctx, span := s.tracer.Start(r.Context(), "POST /api/v1/included", oteltrace.SpanServer, oteltrace.Attributes{
 			"http.request.method": "POST",
 			"http.route":          "/api/v1/included",
 			"pr.count":            len(request.PullRequests),
+			"pr.id":               request.PullRequests[0].ID,
+			"pr.included_count":   len(request.PullRequests[0].IncludedPRs),
 		})
 		r = r.WithContext(ctx)
 		requestSpan = span
@@ -174,8 +180,6 @@ func (s *Server) included(w http.ResponseWriter, r *http.Request) {
 			requestSpan.End(requestErr, oteltrace.Attributes{"http.response.status_code": http.StatusOK})
 		}
 	}()
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	flusher, _ := w.(http.Flusher)

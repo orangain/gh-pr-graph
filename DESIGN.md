@@ -170,7 +170,7 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 初期ロード中に各PRの差分commit messageを最大300件まで走査し、`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出する。この時点で件数を含むメイングラフを返すため、初期描画時からトグルを配置できる。描画後、同じrepositoryの番号についてタイトル、URL、作者などのPR情報を動的GraphQL aliasを使った1回のqueryで追加取得する。詳細を取得できない番号も初期スロットを維持し、後段更新によるレイアウトシフトを発生させない。
 
-初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を自動実行して詳細を反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
+初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。browserは親PR IDごとに番号setと詳細をメモリキャッシュし、次回更新でsetが同じなら通信せずキャッシュを反映する。setが変わった親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
 ## 6. アーキテクチャ
 
