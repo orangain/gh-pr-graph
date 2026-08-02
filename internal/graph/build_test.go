@@ -19,6 +19,18 @@ func TestBuildStack(t *testing.T) {
 	}
 }
 
+func TestBuildConnectsUnknownNonDefaultBaseToRepository(t *testing.T) {
+	prs := []*PullRequest{{ID: "1", RepositoryID: "r", Repository: "o/r", DefaultBranch: "main", BaseRefName: "release/very-long-branch"}}
+	got := Build(prs, nil)
+	if len(got.Edges) != 1 {
+		t.Fatalf("edges = %d, want 1", len(got.Edges))
+	}
+	edge := got.Edges[0]
+	if edge.Source != "repo:r" || edge.Target != "pr:1" || edge.Label != "release/very-long-branch" || !edge.Dashed {
+		t.Fatalf("edge = %+v", edge)
+	}
+}
+
 func TestRelationPriority(t *testing.T) {
 	pr := &PullRequest{Author: User{Login: "me"}}
 	if got := RelationFor(pr, "me", true); got != "mine" {

@@ -68,8 +68,13 @@ func Build(prs []*PullRequest, warnings []string) Result {
 	for _, pr := range prs {
 		result.Nodes = append(result.Nodes, Node{ID: "pr:" + pr.ID, Kind: "pullRequest", Rank: ranks[pr.ID], PR: pr})
 		parents := head[refKey(pr.RepositoryID, pr.BaseRefName)]
-		if len(parents) == 0 && pr.BaseRefName == pr.DefaultBranch {
-			result.Edges = append(result.Edges, Edge{ID: "root:" + pr.ID, Source: "repo:" + pr.RepositoryID, Target: "pr:" + pr.ID})
+		if len(parents) == 0 {
+			edge := Edge{ID: "root:" + pr.ID, Source: "repo:" + pr.RepositoryID, Target: "pr:" + pr.ID}
+			if pr.BaseRefName != pr.DefaultBranch {
+				edge.Label = pr.BaseRefName
+				edge.Dashed = true
+			}
+			result.Edges = append(result.Edges, edge)
 		}
 		for _, parent := range parents {
 			if parent.ID != pr.ID {

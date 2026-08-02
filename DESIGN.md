@@ -125,7 +125,9 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 - root edge: PR の `baseRefName == repository.defaultBranchRef.name`
 - stack edge: PR A の `headRefName` と PR B の `baseRefName` が一致し、head repository も一致するとき `A -> B`
 
-fork 由来ブランチの衝突を避けるため、ブランチの identity は単なる名前ではなく `(repository ID, ref name)` とする。base にしている PR が検索結果に含まれない場合は、軽量な「外部ブランチ」ノードを補い、孤立して見えないようにする。
+fork 由来ブランチの衝突を避けるため、ブランチの identity は単なる名前ではなく `(repository ID, ref name)` とする。
+
+baseがdefault branchではなく、同じbaseをheadに持つ親PRもgraph内にない場合は、repository nodeからPRへ破線edgeを引く。edgeには省略したbase branch名を表示し、hoverで完全な名前を確認できるようにする。
 
 同じ head branch を持つ複数 PR、削除済み branch、循環的に見える不正データは例外として扱う。edge の確度を `exact | inferred` で保持し、exact edge を優先する。循環を検出した場合は更新日時の古い inferred edge を切り、警告 badge を付ける。
 
