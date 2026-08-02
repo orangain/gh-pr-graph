@@ -102,9 +102,9 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 - graph 表示完了から 5 分ごとに現在の検索条件を再取得する。
 - header に最終更新時刻、次回更新までの時間、自動更新の on/off toggle を表示する。既定は on。
-- 初回取得と更新の間は header 直下に progress bar と `Loading pull requests…` を表示し、処理中であることを常に確認できるようにする。
+- 初回取得中だけheader直下にprogress barと`Loading pull requests…`を表示する。初回表示後の自動・手動更新では、progress領域の出現によるviewportの縦ずれを避けるため表示しない。
 - browser tab が非表示または端末が offline の間は polling を止め、再表示／online 復帰時に前回更新から 5 分以上経っていれば即座に更新する。
-- 更新中も現在の graph を残し、header の小さな progress 表示だけを出す。成功後は node/edge の差分を反映し、pan、zoom、選択、折りたたみ状態を維持する。
+- 更新中も現在のgraphをそのまま残し、成功後にnode/edgeの差分を反映してviewportを維持する。
 - 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は exponential backoff とし、手動更新は常に可能にする。
 - 検索条件が変更された場合は polling timer をリセットする。同じ query に対する同時リクエストは 1 件にまとめる。
 
