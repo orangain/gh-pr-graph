@@ -42,12 +42,6 @@ const commitMessagesQuery = `query($id:ID!,$after:String){
   }}
 }`
 
-const pullRequestByNumberQuery = `query($owner:String!,$name:String!,$number:Int!){
-  repository(owner:$owner,name:$name){pullRequest(number:$number){
-    id number title url merged mergedAt author{login avatarUrl}
-  }}
-}`
-
 var mergedPRPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?im)^Merge pull request #(\d+)\b`),
 	regexp.MustCompile(`(?im)^Merged?[^\n#]*#(\d+)\b`),
@@ -138,18 +132,21 @@ type commitMessagesResponse struct {
 	}
 }
 
-type pullRequestByNumberResponse struct {
-	Data struct {
-		Repository *struct {
-			PullRequest *struct {
-				ID, Title, URL string
-				Number         int
-				Merged         bool
-				MergedAt       *time.Time
-				Author         *rawUser
-			}
-		}
-	}
+type rawIncludedPR struct {
+	ID, Title, URL string
+	Number         int
+	Merged         bool
+	MergedAt       *time.Time
+	Author         *rawUser
+}
+
+type batchPullRequestResponse struct {
+	Data map[string]json.RawMessage
+}
+
+type includedCandidate struct {
+	repository string
+	number     int
 }
 
 func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
@@ -330,27 +327,34 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	for _, pr := range byID {
 		prs = append(prs, pr)
 	}
-	if err := c.loadIncludedFromMessages(ctx, prs, report); err != nil {
-		warnings = append(warnings, "Some included pull requests could not be loaded: "+err.Error())
-	}
 	return graph.Build(prs, warnings), nil
 }
 
-func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.PullRequest, report func(int, int, string)) (resultErr error) {
+func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (updates []graph.IncludedUpdate, resultErr error) {
+	updates = []graph.IncludedUpdate{}
+	report := func(current, total int, phase string) {
+		if progress != nil {
+			progress(current, total, phase)
+		}
+	}
 	ctx, phaseSpan := c.startSpan(ctx, "inspect included pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.count": len(prs)})
 	if phaseSpan != nil {
-		defer func() { phaseSpan.End(resultErr, nil) }()
+		defer func() { phaseSpan.End(resultErr, oteltrace.Attributes{"pr.update_count": len(updates)}) }()
 	}
 	if len(prs) == 0 {
 		report(1, 1, "Inspecting included pull requests")
-		return nil
+		report(1, 1, "Fetching included pull requests")
+		return updates, nil
 	}
 	type job struct{ pr *graph.PullRequest }
+	type scanResult struct {
+		pr      *graph.PullRequest
+		numbers []int
+		err     error
+	}
 	jobs := make(chan job)
+	results := make(chan scanResult, len(prs))
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	completed := 0
-	errorsSeen := []string{}
 	workers := maxConcurrentGitHubRequests
 	if len(prs) < workers {
 		workers = len(prs)
@@ -360,34 +364,120 @@ func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.Pull
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				included, err := c.includedFromMessages(ctx, item.pr)
-				mu.Lock()
-				if err != nil {
-					errorsSeen = append(errorsSeen, err.Error())
-				} else {
-					item.pr.IncludedPRs = included
-				}
-				completed++
-				report(completed, len(prs), "Inspecting included pull requests")
-				mu.Unlock()
+				numbers, err := c.includedNumbersFromMessages(ctx, item.pr)
+				results <- scanResult{pr: item.pr, numbers: numbers, err: err}
 			}
 		}()
 	}
-	for _, pr := range prs {
-		jobs <- job{pr: pr}
+	go func() {
+		for _, pr := range prs {
+			jobs <- job{pr: pr}
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+	parentsByCandidate := map[includedCandidate][]string{}
+	errorsSeen := 0
+	completed := 0
+	for result := range results {
+		completed++
+		if result.err != nil {
+			errorsSeen++
+		} else {
+			for _, number := range result.numbers {
+				key := includedCandidate{repository: result.pr.Repository, number: number}
+				parentsByCandidate[key] = append(parentsByCandidate[key], result.pr.ID)
+			}
+		}
+		report(completed, len(prs), "Inspecting included pull requests")
 	}
-	close(jobs)
-	wg.Wait()
-	if len(errorsSeen) > 0 {
-		return fmt.Errorf("%d of %d commit scans failed", len(errorsSeen), len(prs))
+	if errorsSeen > 0 {
+		return nil, fmt.Errorf("%d of %d commit scans failed", errorsSeen, len(prs))
 	}
-	return nil
+	if len(parentsByCandidate) == 0 {
+		report(1, 1, "Fetching included pull requests")
+		return updates, nil
+	}
+	report(0, 1, "Fetching included pull requests")
+	included, err := c.fetchIncludedPullRequests(ctx, parentsByCandidate)
+	if err != nil {
+		return nil, err
+	}
+	report(1, 1, "Fetching included pull requests")
+	for parentID, prs := range included {
+		sort.Slice(prs, func(i, j int) bool { return prs[i].Number < prs[j].Number })
+		updates = append(updates, graph.IncludedUpdate{PullRequestID: parentID, IncludedPullRequests: prs})
+	}
+	sort.Slice(updates, func(i, j int) bool { return updates[i].PullRequestID < updates[j].PullRequestID })
+	return updates, nil
 }
 
-func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest) (result []graph.IncludedPullRequest, resultErr error) {
+func (c *Client) fetchIncludedPullRequests(ctx context.Context, parentsByCandidate map[includedCandidate][]string) (map[string][]graph.IncludedPullRequest, error) {
+	query, byAlias := buildIncludedPullRequestsQuery(parentsByCandidate)
+	if len(byAlias) == 0 {
+		return nil, nil
+	}
+	var response batchPullRequestResponse
+	if err := c.graphql(ctx, "batch get included pull requests", query, nil, &response); err != nil {
+		return nil, err
+	}
+	result := map[string][]graph.IncludedPullRequest{}
+	for alias, candidate := range byAlias {
+		var repository struct {
+			PullRequest *rawIncludedPR `json:"pr"`
+		}
+		if raw := response.Data[alias]; len(raw) == 0 || string(raw) == "null" {
+			continue
+		} else if err := json.Unmarshal(raw, &repository); err != nil {
+			return nil, fmt.Errorf("decode included pull request: %w", err)
+		}
+		pr := repository.PullRequest
+		if pr == nil || !pr.Merged {
+			continue
+		}
+		included := graph.IncludedPullRequest{ID: pr.ID, Number: pr.Number, Title: pr.Title, URL: pr.URL, MergedAt: pr.MergedAt}
+		if pr.Author != nil {
+			included.Author = graph.User{Login: pr.Author.Login, AvatarURL: pr.Author.AvatarURL}
+		}
+		for _, parentID := range parentsByCandidate[candidate] {
+			result[parentID] = append(result[parentID], included)
+		}
+	}
+	return result, nil
+}
+
+func buildIncludedPullRequestsQuery(parentsByCandidate map[includedCandidate][]string) (string, map[string]includedCandidate) {
+	candidates := make([]includedCandidate, 0, len(parentsByCandidate))
+	for candidate := range parentsByCandidate {
+		candidates = append(candidates, candidate)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].repository != candidates[j].repository {
+			return candidates[i].repository < candidates[j].repository
+		}
+		return candidates[i].number < candidates[j].number
+	})
+	var query strings.Builder
+	query.WriteString("query{")
+	byAlias := make(map[string]includedCandidate, len(candidates))
+	for i, candidate := range candidates {
+		parts := strings.SplitN(candidate.repository, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		alias := "r" + strconv.Itoa(i)
+		byAlias[alias] = candidate
+		fmt.Fprintf(&query, "%s:repository(owner:%s,name:%s){pr:pullRequest(number:%d){id number title url merged mergedAt author{login avatarUrl}}}", alias, strconv.Quote(parts[0]), strconv.Quote(parts[1]), candidate.number)
+	}
+	query.WriteByte('}')
+	return query.String(), byAlias
+}
+
+func (c *Client) includedNumbersFromMessages(ctx context.Context, pr *graph.PullRequest) (result []int, resultErr error) {
 	ctx, inspectSpan := c.startSpan(ctx, "inspect pull request commits", oteltrace.SpanInternal, oteltrace.Attributes{"pr.repository": pr.Repository, "pr.number": pr.Number})
 	if inspectSpan != nil {
-		defer func() { inspectSpan.End(resultErr, oteltrace.Attributes{"pr.included_count": len(result)}) }()
+		defer func() { inspectSpan.End(resultErr, oteltrace.Attributes{"pr.candidate_count": len(result)}) }()
 	}
 	numbers := map[int]bool{}
 	after := ""
@@ -415,35 +505,11 @@ func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest
 		}
 		after = pageInfo.EndCursor
 	}
-	if len(numbers) == 0 {
-		return nil, nil
-	}
-	parts := strings.SplitN(pr.Repository, "/", 2)
-	if len(parts) != 2 {
-		return nil, nil
-	}
-	result = []graph.IncludedPullRequest{}
-	orderedNumbers := make([]int, 0, len(numbers))
+	result = make([]int, 0, len(numbers))
 	for number := range numbers {
-		orderedNumbers = append(orderedNumbers, number)
+		result = append(result, number)
 	}
-	sort.Ints(orderedNumbers)
-	for _, number := range orderedNumbers {
-		var response pullRequestByNumberResponse
-		variables := map[string]string{"owner": parts[0], "name": parts[1], "number": strconv.Itoa(number)}
-		if err := c.graphql(ctx, "get included pull request", pullRequestByNumberQuery, variables, &response); err != nil {
-			return nil, err
-		}
-		if response.Data.Repository == nil || response.Data.Repository.PullRequest == nil || !response.Data.Repository.PullRequest.Merged {
-			continue
-		}
-		raw := response.Data.Repository.PullRequest
-		included := graph.IncludedPullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, MergedAt: raw.MergedAt}
-		if raw.Author != nil {
-			included.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
-		}
-		result = append(result, included)
-	}
+	sort.Ints(result)
 	return result, nil
 }
 

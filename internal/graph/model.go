@@ -72,6 +72,11 @@ type IncludedPullRequest struct {
 	MergedAt *time.Time `json:"mergedAt,omitempty"`
 }
 
+type IncludedUpdate struct {
+	PullRequestID        string                `json:"pullRequestId"`
+	IncludedPullRequests []IncludedPullRequest `json:"includedPullRequests"`
+}
+
 func RelationFor(pr *PullRequest, viewer string, directlyReviewRequested bool) string {
 	if pr.Author.Login == viewer {
 		return "mine"

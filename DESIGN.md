@@ -168,9 +168,9 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-グラフ取得中に各PRの差分commit messageを最大300件まで走査する。`Merge pull request #123`や`Merged ... #123`を検出した場合だけ、同じrepositoryの対象番号についてPR情報を追加取得する。取得したPRが実際にmergedの場合だけIncluded PRとして採用する。
+メイングラフを先に返して描画した後、各PRの差分commit messageを最大300件まで自動走査する。`Merge pull request #123`や`Merged ... #123`を検出した場合だけ、同じrepositoryの対象番号についてPR情報を追加取得する。候補は動的GraphQL aliasを使った1回のqueryへまとめ、取得したPRが実際にmergedの場合だけIncluded PRとして採用する。
 
-全PRについて先に判定を完了してgraph responseへ含める。Included PRが1件以上あるノードだけにbranch iconを表示し、クリックで取得済み一覧を開閉する。追加の遅延API requestは発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
+初期graph responseにはIncluded PRを含めず、browserの初期描画完了後に`POST /api/v1/included`を自動実行して差分を反映する。Included PRが1件以上あるノードだけにbranch iconを表示し、クリックでは取得済み一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
 ## 6. アーキテクチャ
 
@@ -190,7 +190,7 @@ gh-pr-graph (Go process)
 ├── HTTP server (127.0.0.1:random)
 │   ├── embedded SPA
 │   ├── JSON API
-│   └── NDJSON stream (progress / final graph)
+│   └── NDJSON stream (initial graph / included updates / progress)
 ├── GitHub service
 │   ├── search + hydration
 │   ├── included-PR resolver
@@ -242,6 +242,7 @@ GraphQL cost を抑えるため connection は小さい上限から開始し、a
 ```text
 GET  /api/v1/session
 GET  /api/v1/graph?q=...&state=open&cursor=...
+POST /api/v1/included
 POST /api/v1/refresh
 GET  /api/v1/events                 # SSE
 GET  /healthz
@@ -357,7 +358,7 @@ docs/
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
-11. Included PRの走査進捗がprogress barへ反映され、個別の取得失敗がgraph全体の表示を妨げない。
+11. メイングラフはIncluded PR走査前に描画され、その直後に走査を自動開始する。進捗は100%までprogress barへ反映され、トグル操作は通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断

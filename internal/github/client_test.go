@@ -1,6 +1,9 @@
 package github
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestConvertReviewSummary(t *testing.T) {
 	raw := rawPR{ID: "pr1"}
@@ -42,5 +45,19 @@ func TestMergedPRNumbersExcludesCurrentPR(t *testing.T) {
 	got := mergedPRNumbers("Merge pull request #42 from org/feature", 42)
 	if len(got) != 0 {
 		t.Fatalf("merged PR numbers = %v, want none", got)
+	}
+}
+
+func TestBuildIncludedPullRequestsQueryBatchesCandidates(t *testing.T) {
+	parents := map[includedCandidate][]string{
+		{repository: "orangain/one", number: 12}: {"parent1"},
+		{repository: "orangain/two", number: 34}: {"parent2"},
+	}
+	query, aliases := buildIncludedPullRequestsQuery(parents)
+	if len(aliases) != 2 {
+		t.Fatalf("aliases = %d, want 2", len(aliases))
+	}
+	if strings.Count(query, "query{") != 1 || strings.Count(query, "pullRequest(number:") != 2 {
+		t.Fatalf("expected one batched query containing two pull requests: %s", query)
 	}
 }

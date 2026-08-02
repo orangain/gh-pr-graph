@@ -11,6 +11,7 @@ The current MVP provides:
 - Thick borders for ready PRs and thin borders plus a badge for drafts
 - Aggregated review, CI, and conflict status
 - Collapsible discovery of merged PRs detected from a PR's commit messages
+- Early graph rendering followed by automatic batched Included PR hydration
 - A visible loading progress indicator during GitHub API requests
 - Repository lanes that keep repository-to-PR edges short
 - Five-minute auto refresh that pauses in hidden or offline tabs
@@ -59,8 +60,8 @@ Useful options:
 Use an explicit collector URL when needed, for example
 `--trace-otel http://localhost:4318` or `--trace-otel=http://localhost:4318`
 (the `/v1/traces` path is added when the
-URL has no path). Each graph API request is a root span with child spans for PR
-search, stacked PR discovery, included PR inspection, and every
+URL has no path). The graph and Included PR API requests are root spans with
+child spans for PR search, stacked PR discovery, commit inspection, and every
 `gh api graphql` command. Command spans include the executed arguments, exit
 code, duration, and error status. Trace delivery is asynchronous, batched, and
 best-effort, so an unavailable collector does not interrupt the application.
@@ -80,9 +81,9 @@ gh pr-graph --trace-otel
 ```
 
 Open [http://localhost:16686](http://localhost:16686), select the
-`gh-pr-graph` service, and click **Find Traces**. A `GET /api/v1/graph` trace
-contains child spans for PR search, stacked PR discovery, included PR
-inspection, and the corresponding `gh api graphql` commands.
+`gh-pr-graph` service, and click **Find Traces**. `GET /api/v1/graph` covers PR
+search and stacked PR discovery; the subsequent `POST /api/v1/included` covers
+commit inspection and the batched Included PR query.
 
 Stop the local collector when finished:
 
