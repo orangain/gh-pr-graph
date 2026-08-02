@@ -65,6 +65,31 @@ search, stacked PR discovery, included PR inspection, and every
 code, duration, and error status. Trace delivery is asynchronous, batched, and
 best-effort, so an unavailable collector does not interrupt the application.
 
+### Inspect traces locally
+
+Start the included Jaeger collector and UI:
+
+```sh
+docker compose up -d
+```
+
+Run the extension with tracing enabled, then load or refresh the PR graph:
+
+```sh
+gh pr-graph --trace-otel
+```
+
+Open [http://localhost:16686](http://localhost:16686), select the
+`gh-pr-graph` service, and click **Find Traces**. A `GET /api/v1/graph` trace
+contains child spans for PR search, stacked PR discovery, included PR
+inspection, and the corresponding `gh api graphql` commands.
+
+Stop the local collector when finished:
+
+```sh
+docker compose down
+```
+
 For local extension development:
 
 ```sh

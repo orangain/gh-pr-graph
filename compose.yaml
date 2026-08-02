@@ -1,0 +1,6 @@
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.18.0
+    ports:
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:16686:16686"
