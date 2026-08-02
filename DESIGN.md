@@ -157,8 +157,10 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 - rank 0 に repository root、依存を 1 rank ずつ右へ置く
 - repository ごとに独立した横方向の lane を作り、その repository node と PR node を同じ lane 内へ配置する
-- rank 1 の PR ごとに独立した stack row を作り、子孫PRを同じrowの隣接列へ上端揃えで配置する
-- repository node は複数のstack row全体に対して中央配置する
+- すべての階層を tidy-tree として再帰配置し、単一の親子は同じY座標、分岐した親は子サブツリー全体の中央に置く
+- DOM描画後に各カードの実寸を測り、サブツリーの高さをbottom-upで求めて重なりを防ぐ
+- DAGで複数の親を持つPRは主エッジを1本選んで配置し、その他のエッジも描画する
+- repository node はrank 1の全サブツリーに対して中央配置する
 - 同一 repository / rank 内は stack root、PR number の順で安定ソートする
 - edge crossing を減らすため barycenter ordering を適用する
 - 初期版は `@xyflow/react` の custom node + `dagre` を推奨する

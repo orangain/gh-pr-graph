@@ -20,23 +20,33 @@ function nodeHTML(node){
   <div class="statuses">${status(`✓ Reviews ${p.reviewApproved}/${p.reviewTotal} approved`,reviewKind)}${status(`● CI ${p.ciState||'UNKNOWN'}`,ciKind)}${conflict}</div>
  </article>`
 }
-function groupStacks(prs,result){
- const byID=new Map(prs.map(node=>[node.id,node])),ids=new Set(byID.keys()),children=new Map();
- for(const edge of result.edges){if(!ids.has(edge.source)||!ids.has(edge.target))continue;if(!children.has(edge.source))children.set(edge.source,[]);children.get(edge.source).push(edge.target)}
- const claimed=new Set(),groups=[];
- function collect(root){const queue=[root],group=[];while(queue.length){const id=queue.shift();if(claimed.has(id))continue;claimed.add(id);const node=byID.get(id);if(!node)continue;group.push(node);for(const child of children.get(id)||[])queue.push(child)}return group}
- for(const root of prs.filter(node=>node.rank===1)){const group=collect(root.id);if(group.length)groups.push(group)}
- for(const node of prs){if(!claimed.has(node.id)){const group=collect(node.id);if(group.length)groups.push(group)}}
- return groups
+function layoutLane(lane,repoNode,prs,result){
+ const nodeWidth=290,horizontalGap=72,verticalGap=24,byID=new Map(prs.map(node=>[node.id,node])),ids=new Set(byID.keys()),children=new Map(),hasParent=new Set();
+ for(const node of prs)children.set(node.id,[]);
+ // A node can have multiple incoming edges in a DAG. Use the first as its
+ // layout parent; all edges are still drawn, but every node is positioned once.
+ for(const edge of result.edges){if(!ids.has(edge.source)||!ids.has(edge.target)||hasParent.has(edge.target))continue;children.get(edge.source).push(edge.target);hasParent.add(edge.target)}
+ const roots=prs.filter(node=>!hasParent.has(node.id)),subtreeHeight=new Map(),visiting=new Set();
+ function element(id){return lane.querySelector(`[data-id="${CSS.escape(id)}"]`)}
+ function measure(id){
+  if(subtreeHeight.has(id))return subtreeHeight.get(id);const el=element(id),own=el?.offsetHeight||1;if(visiting.has(id))return own;visiting.add(id);
+  const childHeights=(children.get(id)||[]).map(measure),descendants=childHeights.reduce((sum,height)=>sum+height,0)+Math.max(0,childHeights.length-1)*verticalGap,height=Math.max(own,descendants);visiting.delete(id);subtreeHeight.set(id,height);return height
+ }
+ const positions=new Map();
+ function place(id,top){
+  const el=element(id),own=el?.offsetHeight||1,height=measure(id),kids=children.get(id)||[];positions.set(id,top+(height-own)/2);let childTop=top;for(const child of kids){place(child,childTop);childTop+=measure(child)+verticalGap}
+ }
+ let top=0;for(const root of roots){place(root.id,top);top+=measure(root.id)+verticalGap}const contentHeight=Math.max(1,top-verticalGap),repoEl=element(repoNode.id),repoHeight=repoEl?.offsetHeight||1,laneHeight=Math.max(contentHeight,repoHeight);
+ if(repoEl){repoEl.style.left='0px';repoEl.style.top=`${(laneHeight-repoHeight)/2}px`}
+ let maxRank=0;for(const node of prs){maxRank=Math.max(maxRank,node.rank);const el=element(node.id);if(!el)continue;el.style.left=`${node.rank*(nodeWidth+horizontalGap)}px`;el.style.top=`${positions.get(node.id)??0}px`}
+ lane.style.width=`${(maxRank+1)*nodeWidth+maxRank*horizontalGap}px`;lane.style.height=`${laneHeight}px`
 }
 function render(result){
  data=result;const oldX=viewport.scrollLeft,oldY=viewport.scrollTop;lanes.innerHTML='';
  const repoNodes=result.nodes.filter(node=>node.kind==='repository');
  const prsByRepo=new Map();for(const node of result.nodes){if(node.kind!=='pullRequest')continue;const id=node.pullRequest.repositoryId;if(!prsByRepo.has(id))prsByRepo.set(id,[]);prsByRepo.get(id).push(node)}
  for(const repoNode of repoNodes){
-  const prs=prsByRepo.get(repoNode.repository.id)||[],groups=groupStacks(prs,result),lane=document.createElement('section');lane.className='repo-lane';
-  const rows=groups.map(group=>{const maxRank=Math.max(1,...group.map(node=>node.rank)),cells=Array.from({length:maxRank},()=>[]);for(const node of group)cells[Math.max(0,node.rank-1)].push(node);return `<div class="stack-row" style="grid-template-columns:repeat(${maxRank}, 290px)">${cells.map((nodes,rank)=>`<div class="lane-cell" data-rank="${rank+1}">${nodes.map(nodeHTML).join('')}</div>`).join('')}</div>`}).join('');
-  lane.innerHTML=`<div class="repo-anchor">${nodeHTML(repoNode)}</div><div class="stack-groups">${rows}</div>`;lanes.append(lane)
+  const prs=prsByRepo.get(repoNode.repository.id)||[],lane=document.createElement('section');lane.className='repo-lane';lane.innerHTML=nodeHTML(repoNode)+prs.map(nodeHTML).join('');lanes.append(lane);layoutLane(lane,repoNode,prs,result)
  }
  empty.hidden=result.nodes.length>0;warnings.textContent=(result.warnings||[]).join(' ');requestAnimationFrame(()=>{drawEdges();viewport.scrollLeft=oldX;viewport.scrollTop=oldY})
 }
