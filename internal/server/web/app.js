@@ -1,5 +1,5 @@
 const form=document.querySelector('#search-form'),input=document.querySelector('#search'),scopeAuthored=document.querySelector('#scope-authored'),scopeAssigned=document.querySelector('#scope-assigned'),scopeReview=document.querySelector('#scope-review'),hideBots=document.querySelector('#hide-bots'),refresh=document.querySelector('#refresh'),auto=document.querySelector('#auto'),updated=document.querySelector('#updated'),warnings=document.querySelector('#warnings'),errorBox=document.querySelector('#error'),lanes=document.querySelector('#lanes'),edges=document.querySelector('#edges'),empty=document.querySelector('#empty'),viewport=document.querySelector('#viewport'),progress=document.querySelector('#progress');
-let timer=null,loading=false,lastUpdated=0,data=null,sourceData=null;
+let timer=null,loading=false,lastUpdated=0,data=null,sourceData=null,renderFrame=null,pendingViewportState=null;
 const inspectCache=new Map(),includedCache=new Map(),includedConcurrency=6;
 const params=new URLSearchParams(location.search);input.value=params.get('q')||'';scopeAuthored.checked=!params.has('authored')||params.get('authored')==='1';scopeAssigned.checked=!params.has('assigned')||params.get('assigned')==='1';scopeReview.checked=!params.has('reviewRequested')||params.get('reviewRequested')==='1';
 
@@ -61,13 +61,13 @@ function filterBotPullRequests(result){
  const ranks=new Map(nodes.map(node=>[node.id,node.kind==='repository'?0:1]));for(let pass=0;pass<nodes.length;pass++){let changed=false;for(const edge of edges){const next=(ranks.get(edge.source)||0)+1;if(next>(ranks.get(edge.target)||0)){ranks.set(edge.target,next);changed=true}}if(!changed)break}for(const node of nodes)node.rank=ranks.get(node.id)||node.rank;return {...result,nodes,edges}
 }
 function render(result){
- const viewportState=captureViewport();data=result;lanes.innerHTML='';
+ if(!pendingViewportState)pendingViewportState=captureViewport();data=result;lanes.innerHTML='';
  const repoNodes=result.nodes.filter(node=>node.kind==='repository');
  const prsByRepo=new Map();for(const node of result.nodes){if(node.kind!=='pullRequest')continue;const id=node.pullRequest.repositoryId;if(!prsByRepo.has(id))prsByRepo.set(id,[]);prsByRepo.get(id).push(node)}
  for(const repoNode of repoNodes){
   const prs=prsByRepo.get(repoNode.repository.id)||[],lane=document.createElement('section');lane.className='repo-lane';lane.innerHTML=nodeHTML(repoNode)+prs.map(nodeHTML).join('');lanes.append(lane);layoutLane(lane,repoNode,prs,result)
  }
- empty.hidden=result.nodes.length>0;warnings.textContent=(result.warnings||[]).join(' ');requestAnimationFrame(()=>{restoreViewport(viewportState);drawEdges()})
+ empty.hidden=result.nodes.length>0;warnings.textContent=(result.warnings||[]).join(' ');if(renderFrame!==null)cancelAnimationFrame(renderFrame);renderFrame=requestAnimationFrame(()=>{const viewportState=pendingViewportState;pendingViewportState=null;renderFrame=null;restoreViewport(viewportState);drawEdges()})
 }
 function applyIncluded(updates){
  if(!updates?.length||!sourceData)return;const byID=new Map(updates.map(update=>[update.pullRequestId,update.includedPullRequests]));for(const node of sourceData.nodes){if(node.kind==='pullRequest'&&byID.has(node.pullRequest.id))node.pullRequest.includedPullRequests=byID.get(node.pullRequest.id)}render(filterBotPullRequests(sourceData))
