@@ -168,7 +168,7 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-初期ロード中に各PRの差分commit messageを最大300件まで走査し、`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出する。この時点で件数を含むメイングラフを返すため、初期描画時からトグルを配置できる。描画後、同じrepositoryの番号についてタイトル、URL、作者などのPR情報を動的GraphQL aliasを使った1回のqueryで追加取得する。詳細を取得できない番号も初期スロットを維持し、後段更新によるレイアウトシフトを発生させない。
+`GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。browserは初期描画前に親PR単位で`POST /api/v1/inspect`を呼び、差分commit messageを最大300件まで走査して`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとしてメモリキャッシュし、両SHAが同じなら再走査しない。全PRの候補数が揃ってから初期描画するため、初期描画時からトグルを配置できる。描画後、同じrepositoryの番号についてタイトル、URL、作者などのPR情報を追加取得する。詳細を取得できない番号も初期スロットを維持し、後段更新によるレイアウトシフトを発生させない。
 
 初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。browserは親PR IDごとに番号setと詳細をメモリキャッシュし、次回更新でsetが同じなら通信せずキャッシュを反映する。setが変わった親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
@@ -242,6 +242,7 @@ GraphQL cost を抑えるため connection は小さい上限から開始し、a
 ```text
 GET  /api/v1/session
 GET  /api/v1/graph?q=...&state=open&cursor=...
+POST /api/v1/inspect
 POST /api/v1/included
 POST /api/v1/refresh
 GET  /api/v1/events                 # SSE
@@ -358,7 +359,7 @@ docs/
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
-11. Included PR候補番号の走査完了後にメイングラフを描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
+11. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断

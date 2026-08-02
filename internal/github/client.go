@@ -42,7 +42,7 @@ var mergedPRPatterns = []*regexp.Regexp{
 }
 
 const prFields = `
-  id number title url isDraft updatedAt baseRefName headRefName reviewDecision mergeable
+  id number title url isDraft updatedAt baseRefName headRefName baseRefOid headRefOid reviewDecision mergeable
   author{login avatarUrl}
   repository{id nameWithOwner url defaultBranchRef{name}}
   headRepository{id nameWithOwner}
@@ -63,12 +63,12 @@ func New(hostname string) *Client { return &Client{Hostname: hostname, MaxPRs: 5
 
 type rawUser struct{ Login, AvatarURL string }
 type rawPR struct {
-	ID, Title, URL, BaseRefName, HeadRefName, ReviewDecision, Mergeable string
-	Number                                                              int
-	IsDraft                                                             bool
-	UpdatedAt                                                           time.Time
-	Author                                                              *rawUser
-	Repository                                                          struct {
+	ID, Title, URL, BaseRefName, HeadRefName, BaseRefOid, HeadRefOid, ReviewDecision, Mergeable string
+	Number                                                                                      int
+	IsDraft                                                                                     bool
+	UpdatedAt                                                                                   time.Time
+	Author                                                                                      *rawUser
+	Repository                                                                                  struct {
 		ID, NameWithOwner, URL string
 		DefaultBranchRef       *struct{ Name string }
 	}
@@ -315,13 +315,6 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	for _, pr := range byID {
 		prs = append(prs, pr)
 	}
-	candidates, err := c.discoverIncludedCandidates(ctx, prs, report)
-	if err != nil {
-		return graph.Result{}, err
-	}
-	for _, pr := range prs {
-		pr.IncludedPRs = candidates[pr.ID]
-	}
 	return graph.Build(prs, warnings), nil
 }
 
@@ -390,6 +383,18 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 	}
 	sort.Slice(updates, func(i, j int) bool { return updates[i].PullRequestID < updates[j].PullRequestID })
 	return updates, nil
+}
+
+func (c *Client) InspectPullRequest(ctx context.Context, pr *graph.PullRequest) (graph.IncludedUpdate, error) {
+	candidates, err := c.discoverIncludedCandidates(ctx, []*graph.PullRequest{pr}, nil)
+	if err != nil {
+		return graph.IncludedUpdate{}, err
+	}
+	included := candidates[pr.ID]
+	if included == nil {
+		included = []graph.IncludedPullRequest{}
+	}
+	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: included}, nil
 }
 
 func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (map[string][]graph.IncludedPullRequest, error) {
@@ -577,7 +582,7 @@ func convert(raw rawPR) *graph.PullRequest {
 	if raw.ID == "" {
 		return nil
 	}
-	pr := &graph.PullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, IsDraft: raw.IsDraft, UpdatedAt: raw.UpdatedAt, BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, ReviewDecision: raw.ReviewDecision, Mergeable: raw.Mergeable}
+	pr := &graph.PullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, IsDraft: raw.IsDraft, UpdatedAt: raw.UpdatedAt, BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, BaseCommitSHA: raw.BaseRefOid, HeadCommitSHA: raw.HeadRefOid, ReviewDecision: raw.ReviewDecision, Mergeable: raw.Mergeable}
 	if raw.Author != nil {
 		pr.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
 	}

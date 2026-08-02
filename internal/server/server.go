@@ -35,6 +35,10 @@ type includedLoader interface {
 	LoadIncluded(context.Context, []*graph.PullRequest, func(current, total int, phase string)) ([]graph.IncludedUpdate, error)
 }
 
+type inspectLoader interface {
+	InspectPullRequest(context.Context, *graph.PullRequest) (graph.IncludedUpdate, error)
+}
+
 type Server struct {
 	loader Loader
 	http   *http.Server
@@ -59,6 +63,7 @@ func (s *Server) Start(port int) (string, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/graph", s.graph)
+	mux.HandleFunc("POST /api/v1/inspect", s.inspect)
 	mux.HandleFunc("POST /api/v1/included", s.included)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.Handle("/", http.FileServer(http.FS(web)))
@@ -139,9 +144,39 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 		_ = encoder.Encode(map[string]any{"type": "error", "error": err.Error()})
 		return err
 	}
-	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Pull requests ready", "percent": 100})
+	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Pull requests ready", "percent": 65})
 	_ = encoder.Encode(map[string]any{"type": "result", "result": result})
 	return nil
+}
+
+func (s *Server) inspect(w http.ResponseWriter, r *http.Request) {
+	loader, ok := s.loader.(inspectLoader)
+	if !ok {
+		http.Error(w, "pull request inspection is not supported", http.StatusNotImplemented)
+		return
+	}
+	var pr graph.PullRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&pr); err != nil || pr.ID == "" {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	var span oteltrace.Span
+	if s.tracer != nil {
+		ctx, span = s.tracer.Start(ctx, "POST /api/v1/inspect", oteltrace.SpanServer, oteltrace.Attributes{"http.request.method": "POST", "http.route": "/api/v1/inspect", "pr.id": pr.ID})
+	}
+	update, err := loader.InspectPullRequest(ctx, &pr)
+	if span != nil {
+		span.End(err, oteltrace.Attributes{"pr.included_count": len(update.IncludedPullRequests)})
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(update)
 }
 
 func (s *Server) included(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +257,7 @@ func progressPercent(current, total int, phase string) int {
 	case "Fetching included pull requests":
 		return 90 + int(ratio*10)
 	case "Pull requests ready":
-		return 100
+		return 65
 	default:
 		return int(ratio * 100)
 	}

@@ -11,7 +11,7 @@ The current MVP provides:
 - Thick borders for ready PRs and thin borders plus a badge for drafts
 - Aggregated review, CI, and conflict status
 - Collapsible discovery of merged PRs detected from a PR's commit messages
-- Early graph rendering followed by automatic batched Included PR hydration
+- Layout-stable initial rendering after cached Included PR candidate inspection
 - Per-containing-PR in-memory caching for Included PR details
 - A visible loading progress indicator during GitHub API requests
 - Repository lanes that keep repository-to-PR edges short
@@ -83,8 +83,8 @@ gh pr-graph --trace-otel
 
 Open [http://localhost:16686](http://localhost:16686), select the
 `gh-pr-graph` service, and click **Find Traces**. `GET /api/v1/graph` covers PR
-search, stacked PR discovery, and commit inspection for Included PR candidates;
-the subsequent `POST /api/v1/included` covers the batched candidate detail query.
+search and stacked PR discovery, `POST /api/v1/inspect` covers commit inspection
+for one containing PR, and `POST /api/v1/included` covers its candidate detail query.
 
 Stop the local collector when finished:
 

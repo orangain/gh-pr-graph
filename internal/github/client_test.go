@@ -6,7 +6,7 @@ import (
 )
 
 func TestConvertReviewSummary(t *testing.T) {
-	raw := rawPR{ID: "pr1"}
+	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha"}
 	raw.LatestReviews.Nodes = append(raw.LatestReviews.Nodes,
 		struct {
 			State  string
@@ -30,6 +30,9 @@ func TestConvertReviewSummary(t *testing.T) {
 	got := convert(raw)
 	if got.ReviewApproved != 1 || got.ReviewTotal != 3 {
 		t.Fatalf("review summary = %d/%d, want 1/3", got.ReviewApproved, got.ReviewTotal)
+	}
+	if got.HeadCommitSHA != "head-sha" || got.BaseCommitSHA != "base-sha" {
+		t.Fatalf("commit SHAs = %q/%q, want head-sha/base-sha", got.HeadCommitSHA, got.BaseCommitSHA)
 	}
 }
 

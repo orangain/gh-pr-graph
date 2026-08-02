@@ -21,6 +21,8 @@ type PullRequest struct {
 	DefaultBranch     string                `json:"defaultBranch"`
 	BaseRefName       string                `json:"baseRefName"`
 	HeadRefName       string                `json:"headRefName"`
+	BaseCommitSHA     string                `json:"baseCommitSha"`
+	HeadCommitSHA     string                `json:"headCommitSha"`
 	HeadRepositoryID  string                `json:"headRepositoryId"`
 	HeadRepository    string                `json:"headRepository"`
 	Assignees         []User                `json:"assignees"`

@@ -27,6 +27,10 @@ func (f *progressLoader) LoadIncluded(_ context.Context, prs []*graph.PullReques
 	return []graph.IncludedUpdate{{PullRequestID: "pr1", IncludedPullRequests: []graph.IncludedPullRequest{{ID: "included1", Number: 1}}}}, nil
 }
 
+func (f *progressLoader) InspectPullRequest(_ context.Context, pr *graph.PullRequest) (graph.IncludedUpdate, error) {
+	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: []graph.IncludedPullRequest{{Number: 42}}}, nil
+}
+
 func (f *fakeLoader) Load(_ context.Context, query string) (graph.Result, error) {
 	f.query = query
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
@@ -82,11 +86,21 @@ func TestGraphStreamsProgressAndResult(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil))
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"percent":100`) || !strings.Contains(body, `"type":"result"`) {
+	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"type":"result"`) {
 		t.Fatalf("unexpected stream: %s", body)
 	}
 	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {
 		t.Fatalf("content type = %q", got)
+	}
+}
+
+func TestInspectReturnsIncludedCandidates(t *testing.T) {
+	s := New(&progressLoader{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/inspect", strings.NewReader(`{"id":"pr1","number":99}`))
+	s.inspect(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"number":42`) {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }
 
