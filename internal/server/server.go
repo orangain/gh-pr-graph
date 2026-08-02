@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/orangain/gh-pr-graph/internal/graph"
+	"github.com/orangain/gh-pr-graph/internal/oteltrace"
 )
 
 //go:embed web/*
@@ -35,9 +36,12 @@ type Server struct {
 	http   *http.Server
 	ln     net.Listener
 	mu     sync.Mutex
+	tracer oteltrace.Tracer
 }
 
 func New(loader Loader) *Server { return &Server{loader: loader} }
+
+func (s *Server) SetTracer(tracer oteltrace.Tracer) { s.tracer = tracer }
 
 func (s *Server) Start(port int) (string, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -70,17 +74,36 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
+	var requestSpan oteltrace.Span
+	if s.tracer != nil {
+		ctx, span := s.tracer.Start(r.Context(), "GET /api/v1/graph", oteltrace.SpanServer, oteltrace.Attributes{
+			"http.request.method": "GET",
+			"http.route":          "/api/v1/graph",
+			"pr.search_query":     r.URL.Query().Get("q"),
+		})
+		r = r.WithContext(ctx)
+		requestSpan = span
+	}
+	var requestErr error
+	statusCode := http.StatusOK
+	defer func() {
+		if requestSpan != nil {
+			requestSpan.End(requestErr, oteltrace.Attributes{"http.response.status_code": statusCode})
+		}
+	}()
 	// Serialize refreshes so polling and manual refresh cannot multiply API cost.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if loader, ok := s.loader.(progressiveLoader); ok {
-		s.graphStream(w, r, loader)
+		requestErr = s.graphStream(w, r, loader)
 		return
 	}
 	result, err := s.loader.Load(r.Context(), r.URL.Query().Get("q"))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
+		requestErr = err
+		statusCode = http.StatusBadGateway
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -88,7 +111,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader progressiveLoader) {
+func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader progressiveLoader) error {
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	flusher, _ := w.(http.Flusher)
@@ -109,10 +132,11 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 	result, err := loader.LoadProgress(r.Context(), r.URL.Query().Get("q"), report)
 	if err != nil {
 		_ = encoder.Encode(map[string]any{"type": "error", "error": err.Error()})
-		return
+		return err
 	}
 	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Complete", "percent": 100})
 	_ = encoder.Encode(map[string]any{"type": "result", "result": result})
+	return nil
 }
 
 func progressPercent(current, total int, phase string) int {

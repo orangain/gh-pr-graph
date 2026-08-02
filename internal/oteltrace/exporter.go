@@ -16,24 +16,48 @@ import (
 
 const DefaultEndpoint = "http://localhost:4318/v1/traces"
 
+type SpanKind int
+
+const (
+	SpanInternal SpanKind = 1
+	SpanServer   SpanKind = 2
+	SpanClient   SpanKind = 3
+)
+
+type Attributes map[string]any
+
+type Span interface {
+	End(error, Attributes)
+}
+
+type Tracer interface {
+	Start(context.Context, string, SpanKind, Attributes) (context.Context, Span)
+}
+
 type Exporter struct {
 	endpoint string
 	client   *http.Client
-	spans    chan span
+	spans    chan spanData
 	done     chan struct{}
 	once     sync.Once
 }
 
-type span struct {
-	TraceID   string
-	SpanID    string
-	Name      string
-	Start     time.Time
-	End       time.Time
-	Args      []string
-	ProcessID int
-	ExitCode  int
-	Error     string
+type spanContext struct{ traceID, spanID string }
+type contextKey struct{}
+
+type spanData struct {
+	TraceID, SpanID, ParentSpanID string
+	Name                          string
+	Kind                          SpanKind
+	Start, End                    time.Time
+	Attributes                    Attributes
+	Error                         string
+}
+
+type recordingSpan struct {
+	exporter *Exporter
+	data     spanData
+	once     sync.Once
 }
 
 func New(rawEndpoint string) (*Exporter, error) {
@@ -41,12 +65,7 @@ func New(rawEndpoint string) (*Exporter, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Exporter{
-		endpoint: endpoint,
-		client:   &http.Client{Timeout: 5 * time.Second},
-		spans:    make(chan span, 256),
-		done:     make(chan struct{}),
-	}
+	e := &Exporter{endpoint: endpoint, client: &http.Client{Timeout: 5 * time.Second}, spans: make(chan spanData, 256), done: make(chan struct{})}
 	go e.run()
 	return e, nil
 }
@@ -72,17 +91,40 @@ type errInvalidEndpoint struct{}
 
 func (errInvalidEndpoint) Error() string { return "endpoint must be an absolute URL" }
 
-// Command records one external command as an OTEL span. Export failures never
-// affect the command because tracing is diagnostic and deliberately best-effort.
-func (e *Exporter) Command(name string, args []string, start time.Time, processID, exitCode int, commandErr error) {
-	s := span{TraceID: randomHex(16), SpanID: randomHex(8), Name: name, Start: start, End: time.Now(), Args: append([]string(nil), args...), ProcessID: processID, ExitCode: exitCode}
-	if commandErr != nil {
-		s.Error = commandErr.Error()
+func (e *Exporter) Start(ctx context.Context, name string, kind SpanKind, attributes Attributes) (context.Context, Span) {
+	traceID := randomHex(16)
+	parentSpanID := ""
+	if parent, ok := ctx.Value(contextKey{}).(spanContext); ok {
+		traceID, parentSpanID = parent.traceID, parent.spanID
 	}
-	select {
-	case e.spans <- s:
-	default:
+	spanID := randomHex(8)
+	s := &recordingSpan{exporter: e, data: spanData{TraceID: traceID, SpanID: spanID, ParentSpanID: parentSpanID, Name: name, Kind: kind, Start: time.Now(), Attributes: cloneAttributes(attributes)}}
+	return context.WithValue(ctx, contextKey{}, spanContext{traceID: traceID, spanID: spanID}), s
+}
+
+func (s *recordingSpan) End(spanErr error, attributes Attributes) {
+	s.once.Do(func() {
+		s.data.End = time.Now()
+		for key, value := range attributes {
+			s.data.Attributes[key] = value
+		}
+		if spanErr != nil {
+			s.data.Error = spanErr.Error()
+			s.data.Attributes["error.type"] = "_OTHER"
+		}
+		select {
+		case s.exporter.spans <- s.data:
+		default:
+		}
+	})
+}
+
+func cloneAttributes(attributes Attributes) Attributes {
+	result := make(Attributes, len(attributes))
+	for key, value := range attributes {
+		result[key] = value
 	}
+	return result
 }
 
 func (e *Exporter) Close(ctx context.Context) error {
@@ -97,32 +139,59 @@ func (e *Exporter) Close(ctx context.Context) error {
 
 func (e *Exporter) run() {
 	defer close(e.done)
-	for s := range e.spans {
-		e.export(s)
+	for {
+		first, ok := <-e.spans
+		if !ok {
+			return
+		}
+		batch := []spanData{first}
+		timer := time.NewTimer(50 * time.Millisecond)
+	collect:
+		for len(batch) < 64 {
+			select {
+			case s, ok := <-e.spans:
+				if !ok {
+					if !timer.Stop() {
+						<-timer.C
+					}
+					e.export(batch)
+					return
+				}
+				batch = append(batch, s)
+			case <-timer.C:
+				break collect
+			}
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		e.export(batch)
 	}
 }
 
-func (e *Exporter) export(s span) {
-	statusCode := 1
-	status := map[string]any{"code": statusCode}
-	if s.Error != "" {
-		status = map[string]any{"code": 2, "message": s.Error}
-	}
-	attrs := []any{
-		map[string]any{"key": "process.executable.name", "value": map[string]any{"stringValue": "gh"}},
-		map[string]any{"key": "process.command_args", "value": map[string]any{"arrayValue": map[string]any{"values": stringValues(append([]string{"gh"}, s.Args...))}}},
-		map[string]any{"key": "process.pid", "value": map[string]any{"intValue": strconv.Itoa(s.ProcessID)}},
-		map[string]any{"key": "process.exit.code", "value": map[string]any{"intValue": strconv.Itoa(s.ExitCode)}},
-	}
-	if s.Error != "" {
-		attrs = append(attrs, map[string]any{"key": "error.type", "value": map[string]any{"stringValue": "_OTHER"}})
+func (e *Exporter) export(spans []spanData) {
+	encodedSpans := make([]any, 0, len(spans))
+	for _, s := range spans {
+		status := map[string]any{"code": 1}
+		if s.Error != "" {
+			status = map[string]any{"code": 2, "message": s.Error}
+		}
+		encodedSpan := map[string]any{
+			"traceId": s.TraceID, "spanId": s.SpanID, "name": s.Name, "kind": int(s.Kind),
+			"startTimeUnixNano": strconv.FormatInt(s.Start.UnixNano(), 10), "endTimeUnixNano": strconv.FormatInt(s.End.UnixNano(), 10),
+			"attributes": encodeAttributes(s.Attributes), "status": status,
+		}
+		if s.ParentSpanID != "" {
+			encodedSpan["parentSpanId"] = s.ParentSpanID
+		}
+		encodedSpans = append(encodedSpans, encodedSpan)
 	}
 	payload := map[string]any{"resourceSpans": []any{map[string]any{
-		"resource": map[string]any{"attributes": []any{map[string]any{"key": "service.name", "value": map[string]any{"stringValue": "gh-pr-graph"}}}},
-		"scopeSpans": []any{map[string]any{
-			"scope": map[string]any{"name": "github.com/orangain/gh-pr-graph"},
-			"spans": []any{map[string]any{"traceId": s.TraceID, "spanId": s.SpanID, "name": s.Name, "kind": 3, "startTimeUnixNano": strconv.FormatInt(s.Start.UnixNano(), 10), "endTimeUnixNano": strconv.FormatInt(s.End.UnixNano(), 10), "attributes": attrs, "status": status}},
-		}},
+		"resource":   map[string]any{"attributes": encodeAttributes(Attributes{"service.name": "gh-pr-graph"})},
+		"scopeSpans": []any{map[string]any{"scope": map[string]any{"name": "github.com/orangain/gh-pr-graph"}, "spans": encodedSpans}},
 	}}}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -139,10 +208,29 @@ func (e *Exporter) export(s span) {
 	}
 }
 
-func stringValues(values []string) []any {
-	result := make([]any, 0, len(values))
-	for _, value := range values {
-		result = append(result, map[string]any{"stringValue": value})
+func encodeAttributes(attributes Attributes) []any {
+	result := make([]any, 0, len(attributes))
+	for key, value := range attributes {
+		encoded := map[string]any{}
+		switch value := value.(type) {
+		case string:
+			encoded["stringValue"] = value
+		case int:
+			encoded["intValue"] = strconv.Itoa(value)
+		case int64:
+			encoded["intValue"] = strconv.FormatInt(value, 10)
+		case bool:
+			encoded["boolValue"] = value
+		case []string:
+			values := make([]any, 0, len(value))
+			for _, item := range value {
+				values = append(values, map[string]any{"stringValue": item})
+			}
+			encoded["arrayValue"] = map[string]any{"values": values}
+		default:
+			continue
+		}
+		result = append(result, map[string]any{"key": key, "value": encoded})
 	}
 	return result
 }

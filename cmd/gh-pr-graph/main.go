@@ -43,6 +43,9 @@ func main() {
 		client.Tracer = exporter
 	}
 	app := server.New(client)
+	if exporter != nil {
+		app.SetTracer(exporter)
+	}
 	address, err := app.Start(port)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gh pr-graph:", err)

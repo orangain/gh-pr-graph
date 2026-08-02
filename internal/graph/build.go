@@ -16,7 +16,14 @@ func Build(prs []*PullRequest, warnings []string) Result {
 		byID[pr.ID] = pr
 		key := refKey(pr.HeadRepositoryID, pr.HeadRefName)
 		head[key] = append(head[key], pr)
-		repos[pr.RepositoryID] = &Repository{ID: pr.RepositoryID, NameWithOwner: pr.Repository, DefaultBranch: pr.DefaultBranch}
+		repo := repos[pr.RepositoryID]
+		if repo == nil {
+			repo = &Repository{ID: pr.RepositoryID, NameWithOwner: pr.Repository, DefaultBranch: pr.DefaultBranch}
+			repos[pr.RepositoryID] = repo
+		}
+		if pr.RepositoryURL != "" {
+			repo.URL = pr.RepositoryURL
+		}
 	}
 
 	ranks := make(map[string]int, len(prs))

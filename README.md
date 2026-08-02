@@ -59,8 +59,10 @@ Useful options:
 Use an explicit collector URL when needed, for example
 `--trace-otel http://localhost:4318` or `--trace-otel=http://localhost:4318`
 (the `/v1/traces` path is added when the
-URL has no path). Each `gh api graphql` span includes the executed arguments,
-exit code, duration, and error status. Trace delivery is asynchronous and
+URL has no path). Each graph API request is a root span with child spans for PR
+search, stacked PR discovery, included PR inspection, and every
+`gh api graphql` command. Command spans include the executed arguments, exit
+code, duration, and error status. Trace delivery is asynchronous, batched, and
 best-effort, so an unavailable collector does not interrupt the application.
 
 For local extension development:

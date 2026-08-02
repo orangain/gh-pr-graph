@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/orangain/gh-pr-graph/internal/graph"
+	"github.com/orangain/gh-pr-graph/internal/oteltrace"
 )
 
 const searchQuery = `query($q:String!){
@@ -53,7 +54,7 @@ var mergedPRPatterns = []*regexp.Regexp{
 const prFields = `
   id number title url isDraft updatedAt baseRefName headRefName reviewDecision mergeable
   author{login avatarUrl}
-  repository{id nameWithOwner defaultBranchRef{name}}
+  repository{id nameWithOwner url defaultBranchRef{name}}
   headRepository{id nameWithOwner}
   assignees(first:20){nodes{login avatarUrl}}
   reviewRequests(first:50){nodes{requestedReviewer{__typename ... on User{login} ... on Team{slug}}}}
@@ -65,11 +66,7 @@ type Client struct {
 	Hostname string
 	MaxPRs   int
 	MaxDepth int
-	Tracer   CommandTracer
-}
-
-type CommandTracer interface {
-	Command(name string, args []string, start time.Time, processID, exitCode int, commandErr error)
+	Tracer   oteltrace.Tracer
 }
 
 func New(hostname string) *Client { return &Client{Hostname: hostname, MaxPRs: 500, MaxDepth: 20} }
@@ -82,8 +79,8 @@ type rawPR struct {
 	UpdatedAt                                                           time.Time
 	Author                                                              *rawUser
 	Repository                                                          struct {
-		ID, NameWithOwner string
-		DefaultBranchRef  *struct{ Name string }
+		ID, NameWithOwner, URL string
+		DefaultBranchRef       *struct{ Name string }
 	}
 	HeadRepository *struct{ ID, NameWithOwner string }
 	Assignees      struct{ Nodes []rawUser }
@@ -157,7 +154,13 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 	return c.LoadProgress(ctx, query, nil)
 }
 
-func (c *Client) LoadProgress(ctx context.Context, query string, progress func(current, total int, phase string)) (graph.Result, error) {
+func (c *Client) LoadProgress(ctx context.Context, query string, progress func(current, total int, phase string)) (result graph.Result, resultErr error) {
+	ctx, loadSpan := c.startSpan(ctx, "load pull request graph", oteltrace.SpanInternal, oteltrace.Attributes{"pr.search_query": query})
+	if loadSpan != nil {
+		defer func() {
+			loadSpan.End(resultErr, oteltrace.Attributes{"pr.node_count": len(result.Nodes), "pr.edge_count": len(result.Edges)})
+		}()
+	}
 	report := func(current, total int, phase string) {
 		if progress != nil {
 			progress(current, total, phase)
@@ -172,9 +175,13 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	viewer := ""
 	warnings := []string{}
 	report(0, len(queries), "Searching pull requests")
+	searchCtx, searchSpan := c.startSpan(ctx, "search pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.query_count": len(queries)})
 	for i, q := range queries {
 		var response searchResponse
-		if err := c.graphql(ctx, searchQuery, map[string]string{"q": q}, &response); err != nil {
+		if err := c.graphql(searchCtx, "search pull requests", searchQuery, map[string]string{"q": q}, &response); err != nil {
+			if searchSpan != nil {
+				searchSpan.End(err, nil)
+			}
 			return graph.Result{}, err
 		}
 		if viewer == "" {
@@ -195,6 +202,9 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 		}
 		report(i+1, len(queries), "Searching pull requests")
 	}
+	if searchSpan != nil {
+		searchSpan.End(nil, oteltrace.Attributes{"pr.result_count": len(byID)})
+	}
 	for id, pr := range byID {
 		pr.Relation = graph.RelationFor(pr, viewer, reviewSeeds[id])
 		pr.Source = "search"
@@ -211,6 +221,7 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	visitedRefs := map[string]bool{}
 	discovered := 0
 	report(0, len(queue), "Discovering stacked pull requests")
+	downstreamCtx, downstreamSpan := c.startSpan(ctx, "discover stacked pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(queue)})
 	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests") }
 	for len(queue) > 0 && len(byID) < c.MaxPRs {
 		current := queue[0]
@@ -232,7 +243,7 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 			continue
 		}
 		var response downstreamResponse
-		err := c.graphql(ctx, downstreamQuery, map[string]string{"owner": parts[0], "name": parts[1], "base": current.pr.HeadRefName}, &response)
+		err := c.graphql(downstreamCtx, "find downstream pull requests", downstreamQuery, map[string]string{"owner": parts[0], "name": parts[1], "base": current.pr.HeadRefName}, &response)
 		if err != nil {
 			warnings = append(warnings, "Could not discover downstream PRs for "+current.pr.HeadRepository+":"+current.pr.HeadRefName)
 			reportDiscovery()
@@ -263,6 +274,9 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	if len(byID) >= c.MaxPRs {
 		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
 	}
+	if downstreamSpan != nil {
+		downstreamSpan.End(nil, oteltrace.Attributes{"pr.discovered_count": len(byID)})
+	}
 	prs := make([]*graph.PullRequest, 0, len(byID))
 	for _, pr := range byID {
 		prs = append(prs, pr)
@@ -273,7 +287,11 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 	return graph.Build(prs, warnings), nil
 }
 
-func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.PullRequest, report func(int, int, string)) error {
+func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.PullRequest, report func(int, int, string)) (resultErr error) {
+	ctx, phaseSpan := c.startSpan(ctx, "inspect included pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.count": len(prs)})
+	if phaseSpan != nil {
+		defer func() { phaseSpan.End(resultErr, nil) }()
+	}
 	if len(prs) == 0 {
 		report(1, 1, "Inspecting included pull requests")
 		return nil
@@ -317,7 +335,11 @@ func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.Pull
 	return nil
 }
 
-func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest) ([]graph.IncludedPullRequest, error) {
+func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest) (result []graph.IncludedPullRequest, resultErr error) {
+	ctx, inspectSpan := c.startSpan(ctx, "inspect pull request commits", oteltrace.SpanInternal, oteltrace.Attributes{"pr.repository": pr.Repository, "pr.number": pr.Number})
+	if inspectSpan != nil {
+		defer func() { inspectSpan.End(resultErr, oteltrace.Attributes{"pr.included_count": len(result)}) }()
+	}
 	numbers := map[int]bool{}
 	after := ""
 	for page := 0; page < 3; page++ {
@@ -326,7 +348,7 @@ func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest
 			variables["after"] = after
 		}
 		var response commitMessagesResponse
-		if err := c.graphql(ctx, commitMessagesQuery, variables, &response); err != nil {
+		if err := c.graphql(ctx, "list pull request commits", commitMessagesQuery, variables, &response); err != nil {
 			return nil, err
 		}
 		if response.Data.Node == nil {
@@ -351,7 +373,7 @@ func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest
 	if len(parts) != 2 {
 		return nil, nil
 	}
-	result := []graph.IncludedPullRequest{}
+	result = []graph.IncludedPullRequest{}
 	orderedNumbers := make([]int, 0, len(numbers))
 	for number := range numbers {
 		orderedNumbers = append(orderedNumbers, number)
@@ -360,7 +382,7 @@ func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest
 	for _, number := range orderedNumbers {
 		var response pullRequestByNumberResponse
 		variables := map[string]string{"owner": parts[0], "name": parts[1], "number": strconv.Itoa(number)}
-		if err := c.graphql(ctx, pullRequestByNumberQuery, variables, &response); err != nil {
+		if err := c.graphql(ctx, "get included pull request", pullRequestByNumberQuery, variables, &response); err != nil {
 			return nil, err
 		}
 		if response.Data.Repository == nil || response.Data.Repository.PullRequest == nil || !response.Data.Repository.PullRequest.Merged {
@@ -403,6 +425,7 @@ func convert(raw rawPR) *graph.PullRequest {
 		pr.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
 	}
 	pr.RepositoryID, pr.Repository = raw.Repository.ID, raw.Repository.NameWithOwner
+	pr.RepositoryURL = raw.Repository.URL
 	if raw.Repository.DefaultBranchRef != nil {
 		pr.DefaultBranch = raw.Repository.DefaultBranchRef.Name
 	}
@@ -450,7 +473,7 @@ func hasViewerRequest(raw rawPR, viewer string) bool {
 	return false
 }
 
-func (c *Client) graphql(ctx context.Context, query string, variables map[string]string, target any) error {
+func (c *Client) graphql(ctx context.Context, operation, query string, variables map[string]string, target any) (resultErr error) {
 	args := []string{"api", "graphql"}
 	if c.Hostname != "" {
 		args = append(args, "--hostname", c.Hostname)
@@ -468,9 +491,13 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	started := time.Now()
+	_, commandSpan := c.startSpan(ctx, "gh api graphql: "+operation, oteltrace.SpanClient, oteltrace.Attributes{
+		"process.executable.name": "gh",
+		"process.command_args":    append([]string{"gh"}, args...),
+		"graphql.operation.name":  operation,
+	})
 	out, err := cmd.Output()
-	if c.Tracer != nil {
+	if commandSpan != nil {
 		processID := 0
 		if cmd.Process != nil {
 			processID = cmd.Process.Pid
@@ -481,7 +508,7 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 		} else if err != nil {
 			exitCode = -1
 		}
-		c.Tracer.Command("gh api graphql", args, started, processID, exitCode, err)
+		commandSpan.End(err, oteltrace.Attributes{"process.pid": processID, "process.exit.code": exitCode})
 	}
 	if err != nil {
 		return fmt.Errorf("GitHub API: %w: %s", err, strings.TrimSpace(stderr.String()))
@@ -490,4 +517,11 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 		return fmt.Errorf("decode GitHub response: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) startSpan(ctx context.Context, name string, kind oteltrace.SpanKind, attributes oteltrace.Attributes) (context.Context, oteltrace.Span) {
+	if c.Tracer == nil {
+		return ctx, nil
+	}
+	return c.Tracer.Start(ctx, name, kind, attributes)
 }

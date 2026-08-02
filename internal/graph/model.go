@@ -17,6 +17,7 @@ type PullRequest struct {
 	Author            User                  `json:"author"`
 	RepositoryID      string                `json:"repositoryId"`
 	Repository        string                `json:"repository"`
+	RepositoryURL     string                `json:"repositoryUrl"`
 	DefaultBranch     string                `json:"defaultBranch"`
 	BaseRefName       string                `json:"baseRefName"`
 	HeadRefName       string                `json:"headRefName"`
@@ -45,6 +46,7 @@ type Node struct {
 type Repository struct {
 	ID            string `json:"id"`
 	NameWithOwner string `json:"nameWithOwner"`
+	URL           string `json:"url"`
 	DefaultBranch string `json:"defaultBranch"`
 }
 
