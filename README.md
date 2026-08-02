@@ -18,7 +18,24 @@ The current MVP provides:
 ## Requirements
 
 - `gh`, authenticated with `gh auth login`
-- Go 1.23 or newer to build from source
+- Go 1.23 or newer only when building from source
+
+## Install
+
+After this repository has been published and its first release has been created:
+
+```sh
+gh extension install OWNER/gh-pr-graph
+gh pr-graph
+```
+
+Replace `OWNER` with the GitHub account or organization that publishes this repository. Users do not need Go; `gh` downloads the release binary matching their OS and architecture.
+
+Upgrade later with:
+
+```sh
+gh extension upgrade pr-graph
+```
 
 ## Build and run
 
@@ -45,6 +62,23 @@ gh pr-graph
 ```
 
 The server only listens on `127.0.0.1`. Press Ctrl-C in the terminal to stop it.
+
+## Releasing
+
+CI runs tests, vet, JavaScript syntax checking, and a build on pushes to `main` and pull requests. To publish a version, push a semantic version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow cross-compiles supported binaries, creates the GitHub Release, uploads correctly named assets, and generates build provenance attestations. The workflow needs the repository's default `GITHUB_TOKEN` with the permissions declared in the workflow; no additional secret is required.
+
+For discoverability, set the repository topic `gh-extension` after publishing it.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Status
 
