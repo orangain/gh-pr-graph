@@ -10,19 +10,13 @@ Color-coded ownership and compact review, CI, conflict, and draft signals help y
 
 ## Requirements
 
-- `gh`, authenticated with `gh auth login`
-- Go 1.23 or newer only when building from source
+- [GitHub CLI (`gh`)](https://cli.github.com/), authenticated with `gh auth login`
 
 ## Install
 
-After this repository has been published and its first release has been created:
-
 ```sh
 gh extension install orangain/gh-pr-graph
-gh pr-graph
 ```
-
-Users do not need Go; `gh` downloads the release binary matching their OS and architecture.
 
 Upgrade later with:
 
@@ -30,15 +24,17 @@ Upgrade later with:
 gh extension upgrade pr-graph
 ```
 
-## Build and run
+## Usage
+
+Start the local server and open the PR graph in your browser:
 
 ```sh
-make test
-make build
-./gh-pr-graph
+gh pr-graph
 ```
 
-Useful options:
+The server only listens on `127.0.0.1`. Press Ctrl-C in the terminal to stop it.
+
+Options:
 
 ```text
 --no-open          print the URL without opening a browser
@@ -46,6 +42,40 @@ Useful options:
 --hostname HOST    use a GitHub Enterprise hostname
 --trace-otel[=URL] send gh command traces via OTLP/HTTP
 ```
+
+## Development
+
+Development requires Go 1.23 or newer.
+
+### Build from source
+
+```sh
+make test
+make build
+./gh-pr-graph
+```
+
+For local extension development:
+
+```sh
+make build
+gh extension install .
+gh pr-graph
+```
+
+### Demo mode
+
+Use the built-in mock pull requests to work on the UI or capture screenshots
+without querying GitHub for pull request data:
+
+```sh
+GH_PR_GRAPH_DEMO=1 ./gh-pr-graph
+```
+
+Demo mode is intentionally enabled only through the `GH_PR_GRAPH_DEMO`
+environment variable and does not appear as a command-line option.
+
+### Inspect traces locally
 
 `--trace-otel` exports traces to `http://localhost:4318/v1/traces` by default.
 Use an explicit collector URL when needed, for example
@@ -56,8 +86,6 @@ child spans for PR search, stacked PR discovery, commit inspection, and every
 `gh api graphql` command. Command spans include the executed arguments, exit
 code, duration, and error status. Trace delivery is asynchronous, batched, and
 best-effort, so an unavailable collector does not interrupt the application.
-
-### Inspect traces locally
 
 Start the included Jaeger collector and UI:
 
@@ -81,16 +109,6 @@ Stop the local collector when finished:
 ```sh
 docker compose down
 ```
-
-For local extension development:
-
-```sh
-make build
-gh extension install .
-gh pr-graph
-```
-
-The server only listens on `127.0.0.1`. Press Ctrl-C in the terminal to stop it.
 
 ## Releasing
 
