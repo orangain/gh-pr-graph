@@ -65,7 +65,7 @@ func TestProgressPercent(t *testing.T) {
 		want           int
 	}{
 		{1, 2, "Searching pull requests", 12},
-		{1, 2, "Discovering stacked pull requests", 45},
+		{1, 2, "Discovering stacked pull requests", 62},
 		{1, 2, "Inspecting included pull requests", 77},
 		{1, 2, "Fetching included pull requests", 95},
 		{1, 1, "Complete", 100},
@@ -82,7 +82,7 @@ func TestGraphStreamsProgressAndResult(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil))
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"type":"result"`) {
+	if !strings.Contains(body, `"percent":100`) || !strings.Contains(body, `"type":"result"`) {
 		t.Fatalf("unexpected stream: %s", body)
 	}
 	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {

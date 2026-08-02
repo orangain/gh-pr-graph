@@ -61,3 +61,20 @@ func TestBuildIncludedPullRequestsQueryBatchesCandidates(t *testing.T) {
 		t.Fatalf("expected one batched query containing two pull requests: %s", query)
 	}
 }
+
+func TestBuildDownstreamQueryBatchesBranches(t *testing.T) {
+	targets := []downstreamQueryTarget{
+		{owner: "orangain", name: "one", base: "feature/a"},
+		{owner: "orangain", name: "two", base: "feature/b"},
+	}
+	query, aliases := buildDownstreamQuery(targets)
+	if len(aliases) != 2 {
+		t.Fatalf("aliases = %d, want 2", len(aliases))
+	}
+	if strings.Count(query, "query{") != 1 || strings.Count(query, "pullRequests(first:100") != 2 {
+		t.Fatalf("expected one batched query containing two branches: %s", query)
+	}
+	if !strings.Contains(query, `baseRefName:"feature/a"`) || !strings.Contains(query, `baseRefName:"feature/b"`) {
+		t.Fatalf("query does not contain both base branches: %s", query)
+	}
+}

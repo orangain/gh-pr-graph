@@ -139,7 +139,7 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 		_ = encoder.Encode(map[string]any{"type": "error", "error": err.Error()})
 		return err
 	}
-	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Pull requests ready", "percent": 65})
+	_ = encoder.Encode(map[string]any{"type": "progress", "current": 1, "total": 1, "phase": "Pull requests ready", "percent": 100})
 	_ = encoder.Encode(map[string]any{"type": "result", "result": result})
 	return nil
 }
@@ -212,13 +212,13 @@ func progressPercent(current, total int, phase string) int {
 	case "Searching pull requests":
 		return int(ratio * 25)
 	case "Discovering stacked pull requests":
-		return 25 + int(ratio*40)
+		return 25 + int(ratio*75)
 	case "Inspecting included pull requests":
 		return 65 + int(ratio*25)
 	case "Fetching included pull requests":
 		return 90 + int(ratio*10)
 	case "Pull requests ready":
-		return 65
+		return 100
 	default:
 		return int(ratio * 100)
 	}

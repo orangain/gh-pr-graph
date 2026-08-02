@@ -213,7 +213,7 @@ frontend に GitHub token を渡さない。すべての GitHub 通信を Go pro
 
 GraphQL `search(type: ISSUE)` で node ID の集合を取得し、PR fragment で表示項目を hydrate する。既定条件は 3 query を並列実行し、global node ID で重複排除する。
 
-hydrate 後、各 PR の `(headRepository ID, headRefName)` に対して対象 repository の `pullRequests(baseRefName: ..., states: OPEN)` を問い合わせ、下流 PR を breadth-first で再帰取得する。branch identity ごとに request をまとめ、同じ branch を複数 seed が参照しても API call を重複させない。取得した PR は検索への直接一致か補完取得かを `source: search | downstream` として保持する。
+hydrate 後、各 PR の `(headRepository ID, headRefName)` に対して対象 repository の `pullRequests(baseRefName: ..., states: OPEN)` を問い合わせ、下流 PR を breadth-first で再帰取得する。同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめ、branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数はbranch数ではなくstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | downstream` として保持する。
 
 主な取得フィールド:
 
@@ -358,7 +358,7 @@ docs/
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
-11. メイングラフはIncluded PR走査前に描画され、その直後に走査を自動開始する。進捗は100%までprogress barへ反映され、トグル操作は通信を発生させない。
+11. メイングラフはIncluded PR走査前に描画され、その時点でprogress barを100%にして閉じる。描画直後にIncluded PR走査を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断

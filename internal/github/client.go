@@ -27,12 +27,6 @@ const searchQuery = `query($q:String!){
   }
 }`
 
-const downstreamQuery = `query($owner:String!,$name:String!,$base:String!){
-  repository(owner:$owner,name:$name){
-    pullRequests(first:100,states:OPEN,baseRefName:$base){nodes{` + prFields + `}}
-  }
-}`
-
 const commitMessagesQuery = `query($id:ID!,$after:String){
   node(id:$id){... on PullRequest{
     commits(first:100,after:$after){
@@ -110,11 +104,13 @@ type searchResponse struct {
 		}
 	}
 }
-type downstreamResponse struct {
-	Data struct {
-		Repository *struct{ PullRequests struct{ Nodes []rawPR } }
-	}
+type batchDownstreamResponse struct{ Data map[string]json.RawMessage }
+
+type rawDownstreamRepository struct {
+	PullRequests struct{ Nodes []rawPR }
 }
+
+type downstreamQueryTarget struct{ owner, name, base string }
 
 type commitMessagesResponse struct {
 	Data struct {
@@ -242,11 +238,6 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 		owner string
 		name  string
 	}
-	type downstreamResult struct {
-		job      downstreamJob
-		response downstreamResponse
-		err      error
-	}
 	for len(frontier) > 0 && len(byID) < c.MaxPRs {
 		jobs := make([]downstreamJob, 0, len(frontier))
 		for _, current := range frontier {
@@ -268,35 +259,33 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 			}
 			jobs = append(jobs, downstreamJob{item: current, owner: parts[0], name: parts[1]})
 		}
-		jobCh := make(chan downstreamJob, len(jobs))
-		results := make(chan downstreamResult, len(jobs))
-		for _, job := range jobs {
-			jobCh <- job
-		}
-		close(jobCh)
-		workers := maxConcurrentGitHubRequests
-		if len(jobs) < workers {
-			workers = len(jobs)
-		}
-		for range workers {
-			go func() {
-				for job := range jobCh {
-					var response downstreamResponse
-					err := c.graphql(downstreamCtx, "find downstream pull requests", downstreamQuery, map[string]string{"owner": job.owner, "name": job.name, "base": job.item.pr.HeadRefName}, &response)
-					results <- downstreamResult{job: job, response: response, err: err}
-				}
-			}()
-		}
 		next := []item{}
-		for range jobs {
-			result := <-results
-			if result.err != nil {
-				warnings = append(warnings, "Could not discover downstream PRs for "+result.job.item.pr.HeadRepository+":"+result.job.item.pr.HeadRefName)
+		targets := make([]downstreamQueryTarget, len(jobs))
+		for i, job := range jobs {
+			targets[i] = downstreamQueryTarget{owner: job.owner, name: job.name, base: job.item.pr.HeadRefName}
+		}
+		query, indexesByAlias := buildDownstreamQuery(targets)
+		var response batchDownstreamResponse
+		if len(jobs) > 0 {
+			if err := c.graphql(downstreamCtx, "batch find downstream pull requests", query, nil, &response); err != nil {
+				for _, job := range jobs {
+					warnings = append(warnings, "Could not discover downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName)
+					reportDiscovery()
+				}
+				frontier = next
+				continue
+			}
+		}
+		for alias, index := range indexesByAlias {
+			job := jobs[index]
+			var repository *rawDownstreamRepository
+			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
+				warnings = append(warnings, "Could not decode downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName)
 				reportDiscovery()
 				continue
 			}
-			if result.response.Data.Repository != nil {
-				for _, raw := range result.response.Data.Repository.PullRequests.Nodes {
+			if repository != nil {
+				for _, raw := range repository.PullRequests.Nodes {
 					if len(byID) >= c.MaxPRs {
 						break
 					}
@@ -310,7 +299,7 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 					pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
 					pr.Source = "downstream"
 					byID[pr.ID] = pr
-					next = append(next, item{pr, result.job.item.depth + 1})
+					next = append(next, item{pr, job.item.depth + 1})
 				}
 			}
 			reportDiscovery()
@@ -328,6 +317,19 @@ func (c *Client) LoadProgress(ctx context.Context, query string, progress func(c
 		prs = append(prs, pr)
 	}
 	return graph.Build(prs, warnings), nil
+}
+
+func buildDownstreamQuery(targets []downstreamQueryTarget) (string, map[string]int) {
+	var query strings.Builder
+	query.WriteString("query{")
+	byAlias := make(map[string]int, len(targets))
+	for i, target := range targets {
+		alias := "r" + strconv.Itoa(i)
+		byAlias[alias] = i
+		query.WriteString(alias + ":repository(owner:" + strconv.Quote(target.owner) + ",name:" + strconv.Quote(target.name) + "){pullRequests(first:100,states:OPEN,baseRefName:" + strconv.Quote(target.base) + "){nodes{" + prFields + "}}}")
+	}
+	query.WriteByte('}')
+	return query.String(), byAlias
 }
 
 func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (updates []graph.IncludedUpdate, resultErr error) {
