@@ -46,6 +46,7 @@ Options:
 ## Development
 
 Development requires Go 1.23 or newer.
+See [DESIGN.md](DESIGN.md) for the architecture and design decisions.
 
 ### Build from source
 
@@ -126,7 +127,3 @@ For discoverability, set the repository topic `gh-extension` after publishing it
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Status
-
-This is an initial implementation based on [DESIGN.md](DESIGN.md). Search pagination beyond the first 100 results and richer team-review aggregation remain to be implemented.
