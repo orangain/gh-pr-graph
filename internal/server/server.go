@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/orangain/gh-pr-graph/internal/graph"
@@ -22,6 +23,8 @@ import (
 
 //go:embed web/*
 var assets embed.FS
+
+const DefaultPort = 8787
 
 type Loader interface {
 	Load(context.Context, graph.SearchOptions) (graph.Result, error)
@@ -75,6 +78,16 @@ func (s *Server) Start(port int) (string, error) {
 	}()
 	return "http://" + ln.Addr().String(), nil
 }
+
+func (s *Server) StartPreferred(port int) (string, error) {
+	address, err := s.Start(port)
+	if err == nil || !shouldFallbackPort(err) {
+		return address, err
+	}
+	return s.Start(0)
+}
+
+func shouldFallbackPort(err error) bool { return errors.Is(err, syscall.EADDRINUSE) }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.http == nil {

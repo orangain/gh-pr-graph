@@ -20,11 +20,17 @@ func main() {
 	var noOpen bool
 	var hostname string
 	var traceOTEL optionalValue
-	flag.IntVar(&port, "port", 0, "local server port (0 selects a free port)")
+	flag.IntVar(&port, "port", server.DefaultPort, "local server port (0 selects a free port)")
 	flag.BoolVar(&noOpen, "no-open", false, "do not open the browser")
 	flag.StringVar(&hostname, "hostname", "", "GitHub hostname (defaults to gh configuration)")
 	flag.Var(&traceOTEL, "trace-otel", "send gh command traces to OTLP/HTTP (optional endpoint; use --trace-otel=URL)")
 	flag.Parse()
+	portExplicit := false
+	flag.Visit(func(current *flag.Flag) {
+		if current.Name == "port" {
+			portExplicit = true
+		}
+	})
 	if traceOTEL.set && traceOTEL.value == "true" && flag.NArg() == 1 {
 		traceOTEL.value = flag.Arg(0)
 	} else if flag.NArg() != 0 {
@@ -51,7 +57,13 @@ func main() {
 	if exporter != nil {
 		app.SetTracer(exporter)
 	}
-	address, err := app.Start(port)
+	var address string
+	var err error
+	if portExplicit {
+		address, err = app.Start(port)
+	} else {
+		address, err = app.StartPreferred(port)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gh pr-graph:", err)
 		os.Exit(1)

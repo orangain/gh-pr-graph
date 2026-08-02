@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,6 +72,15 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if got := recorder.Header().Get("Content-Security-Policy"); got == "" {
 		t.Fatal("Content-Security-Policy is missing")
+	}
+}
+
+func TestShouldFallbackPort(t *testing.T) {
+	if !shouldFallbackPort(fmt.Errorf("listen: %w", syscall.EADDRINUSE)) {
+		t.Fatal("address-in-use error should fall back")
+	}
+	if shouldFallbackPort(errors.New("unrelated")) {
+		t.Fatal("unrelated error should not fall back")
 	}
 }
 
