@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/orange/gh-pr-graph/internal/github"
-	"github.com/orange/gh-pr-graph/internal/server"
+	"github.com/orangain/gh-pr-graph/internal/github"
+	"github.com/orangain/gh-pr-graph/internal/server"
 )
 
 func main() {

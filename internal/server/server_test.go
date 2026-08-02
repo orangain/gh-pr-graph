@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/orange/gh-pr-graph/internal/graph"
+	"github.com/orangain/gh-pr-graph/internal/graph"
 )
 
 type fakeLoader struct{ query string }

@@ -25,11 +25,11 @@ The current MVP provides:
 After this repository has been published and its first release has been created:
 
 ```sh
-gh extension install OWNER/gh-pr-graph
+gh extension install orangain/gh-pr-graph
 gh pr-graph
 ```
 
-Replace `OWNER` with the GitHub account or organization that publishes this repository. Users do not need Go; `gh` downloads the release binary matching their OS and architecture.
+Users do not need Go; `gh` downloads the release binary matching their OS and architecture.
 
 Upgrade later with:
 

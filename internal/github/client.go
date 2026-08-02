@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/orange/gh-pr-graph/internal/graph"
+	"github.com/orangain/gh-pr-graph/internal/graph"
 )
 
 const searchQuery = `query($q:String!){
