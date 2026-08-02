@@ -6,7 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/orangain/gh-pr-graph/internal/graph"
@@ -26,21 +30,25 @@ const downstreamQuery = `query($owner:String!,$name:String!,$base:String!){
   }
 }`
 
-const includedQuery = `query($id:ID!,$after:String){
+const commitMessagesQuery = `query($id:ID!,$after:String){
   node(id:$id){... on PullRequest{
-    id
     commits(first:100,after:$after){
       pageInfo{hasNextPage endCursor}
-      nodes{commit{
-        oid
-        associatedPullRequests(first:10){
-          pageInfo{hasNextPage}
-          nodes{id number title url merged mergedAt author{login avatarUrl} mergeCommit{oid}}
-        }
-      }}
+      nodes{commit{messageHeadline messageBody}}
     }
   }}
 }`
+
+const pullRequestByNumberQuery = `query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){pullRequest(number:$number){
+    id number title url merged mergedAt author{login avatarUrl}
+  }}
+}`
+
+var mergedPRPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?im)^Merge pull request #(\d+)\b`),
+	regexp.MustCompile(`(?im)^Merged?[^\n#]*#(\d+)\b`),
+}
 
 const prFields = `
   id number title url isDraft updatedAt baseRefName headRefName reviewDecision mergeable
@@ -110,37 +118,46 @@ type downstreamResponse struct {
 	}
 }
 
-type includedResponse struct {
+type commitMessagesResponse struct {
 	Data struct {
 		Node *struct {
-			ID      string
 			Commits struct {
 				PageInfo struct {
 					HasNextPage bool
 					EndCursor   string
 				}
 				Nodes []struct {
-					Commit struct {
-						OID                    string
-						AssociatedPullRequests struct {
-							PageInfo struct{ HasNextPage bool }
-							Nodes    []struct {
-								ID, Title, URL string
-								Number         int
-								Merged         bool
-								MergedAt       *time.Time
-								Author         *rawUser
-								MergeCommit    *struct{ OID string }
-							}
-						}
-					}
+					Commit struct{ MessageHeadline, MessageBody string }
 				}
 			}
 		}
 	}
 }
 
+type pullRequestByNumberResponse struct {
+	Data struct {
+		Repository *struct {
+			PullRequest *struct {
+				ID, Title, URL string
+				Number         int
+				Merged         bool
+				MergedAt       *time.Time
+				Author         *rawUser
+			}
+		}
+	}
+}
+
 func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
+	return c.LoadProgress(ctx, query, nil)
+}
+
+func (c *Client) LoadProgress(ctx context.Context, query string, progress func(current, total int, phase string)) (graph.Result, error) {
+	report := func(current, total int, phase string) {
+		if progress != nil {
+			progress(current, total, phase)
+		}
+	}
 	queries := []string{query}
 	if strings.TrimSpace(query) == "" {
 		queries = []string{"is:pr is:open author:@me", "is:pr is:open assignee:@me", "is:pr is:open review-requested:@me"}
@@ -149,6 +166,7 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 	reviewSeeds := map[string]bool{}
 	viewer := ""
 	warnings := []string{}
+	report(0, len(queries), "Searching pull requests")
 	for i, q := range queries {
 		var response searchResponse
 		if err := c.graphql(ctx, searchQuery, map[string]string{"q": q}, &response); err != nil {
@@ -170,6 +188,7 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 			}
 			byID[pr.ID] = pr
 		}
+		report(i+1, len(queries), "Searching pull requests")
 	}
 	for id, pr := range byID {
 		pr.Relation = graph.RelationFor(pr, viewer, reviewSeeds[id])
@@ -185,28 +204,37 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 		queue = append(queue, item{pr, 0})
 	}
 	visitedRefs := map[string]bool{}
+	discovered := 0
+	report(0, len(queue), "Discovering stacked pull requests")
+	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests") }
 	for len(queue) > 0 && len(byID) < c.MaxPRs {
 		current := queue[0]
 		queue = queue[1:]
+		discovered++
 		if current.depth >= c.MaxDepth || current.pr.HeadRepository == "" || current.pr.HeadRefName == "" {
+			reportDiscovery()
 			continue
 		}
 		key := current.pr.HeadRepositoryID + "\x00" + current.pr.HeadRefName
 		if visitedRefs[key] {
+			reportDiscovery()
 			continue
 		}
 		visitedRefs[key] = true
 		parts := strings.SplitN(current.pr.HeadRepository, "/", 2)
 		if len(parts) != 2 {
+			reportDiscovery()
 			continue
 		}
 		var response downstreamResponse
 		err := c.graphql(ctx, downstreamQuery, map[string]string{"owner": parts[0], "name": parts[1], "base": current.pr.HeadRefName}, &response)
 		if err != nil {
 			warnings = append(warnings, "Could not discover downstream PRs for "+current.pr.HeadRepository+":"+current.pr.HeadRefName)
+			reportDiscovery()
 			continue
 		}
 		if response.Data.Repository == nil {
+			reportDiscovery()
 			continue
 		}
 		for _, raw := range response.Data.Repository.PullRequests.Nodes {
@@ -225,6 +253,7 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 			byID[pr.ID] = pr
 			queue = append(queue, item{pr, current.depth + 1})
 		}
+		reportDiscovery()
 	}
 	if len(byID) >= c.MaxPRs {
 		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
@@ -233,51 +262,131 @@ func (c *Client) Load(ctx context.Context, query string) (graph.Result, error) {
 	for _, pr := range byID {
 		prs = append(prs, pr)
 	}
+	if err := c.loadIncludedFromMessages(ctx, prs, report); err != nil {
+		warnings = append(warnings, "Some included pull requests could not be loaded: "+err.Error())
+	}
 	return graph.Build(prs, warnings), nil
 }
 
-func (c *Client) Included(ctx context.Context, id string) (graph.IncludedResult, error) {
-	result := graph.IncludedResult{}
-	seen := map[string]bool{}
+func (c *Client) loadIncludedFromMessages(ctx context.Context, prs []*graph.PullRequest, report func(int, int, string)) error {
+	if len(prs) == 0 {
+		report(1, 1, "Inspecting included pull requests")
+		return nil
+	}
+	type job struct{ pr *graph.PullRequest }
+	jobs := make(chan job)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	completed := 0
+	errorsSeen := []string{}
+	workers := 6
+	if len(prs) < workers {
+		workers = len(prs)
+	}
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range jobs {
+				included, err := c.includedFromMessages(ctx, item.pr)
+				mu.Lock()
+				if err != nil {
+					errorsSeen = append(errorsSeen, err.Error())
+				} else {
+					item.pr.IncludedPRs = included
+				}
+				completed++
+				report(completed, len(prs), "Inspecting included pull requests")
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, pr := range prs {
+		jobs <- job{pr: pr}
+	}
+	close(jobs)
+	wg.Wait()
+	if len(errorsSeen) > 0 {
+		return fmt.Errorf("%d of %d commit scans failed", len(errorsSeen), len(prs))
+	}
+	return nil
+}
+
+func (c *Client) includedFromMessages(ctx context.Context, pr *graph.PullRequest) ([]graph.IncludedPullRequest, error) {
+	numbers := map[int]bool{}
 	after := ""
 	for page := 0; page < 3; page++ {
-		variables := map[string]string{"id": id}
+		variables := map[string]string{"id": pr.ID}
 		if after != "" {
 			variables["after"] = after
 		}
-		var response includedResponse
-		if err := c.graphql(ctx, includedQuery, variables, &response); err != nil {
-			return graph.IncludedResult{}, err
+		var response commitMessagesResponse
+		if err := c.graphql(ctx, commitMessagesQuery, variables, &response); err != nil {
+			return nil, err
 		}
 		if response.Data.Node == nil {
-			return graph.IncludedResult{}, fmt.Errorf("pull request not found")
+			return nil, fmt.Errorf("pull request %s not found", pr.ID)
 		}
-		for _, commitNode := range response.Data.Node.Commits.Nodes {
-			associated := commitNode.Commit.AssociatedPullRequests
-			if associated.PageInfo.HasNextPage {
-				result.Truncated = true
-			}
-			for _, candidate := range associated.Nodes {
-				// Only count an exact merge commit contained in this PR's commit set.
-				if candidate.ID == id || !candidate.Merged || candidate.MergeCommit == nil || candidate.MergeCommit.OID != commitNode.Commit.OID || seen[candidate.ID] {
-					continue
-				}
-				seen[candidate.ID] = true
-				included := graph.IncludedPullRequest{ID: candidate.ID, Number: candidate.Number, Title: candidate.Title, URL: candidate.URL, MergedAt: candidate.MergedAt}
-				if candidate.Author != nil {
-					included.Author = graph.User{Login: candidate.Author.Login, AvatarURL: candidate.Author.AvatarURL}
-				}
-				result.PullRequests = append(result.PullRequests, included)
+		for _, node := range response.Data.Node.Commits.Nodes {
+			message := node.Commit.MessageHeadline + "\n" + node.Commit.MessageBody
+			for _, number := range mergedPRNumbers(message, pr.Number) {
+				numbers[number] = true
 			}
 		}
 		pageInfo := response.Data.Node.Commits.PageInfo
 		if !pageInfo.HasNextPage {
-			return result, nil
+			break
 		}
 		after = pageInfo.EndCursor
 	}
-	result.Truncated = true
+	if len(numbers) == 0 {
+		return nil, nil
+	}
+	parts := strings.SplitN(pr.Repository, "/", 2)
+	if len(parts) != 2 {
+		return nil, nil
+	}
+	result := []graph.IncludedPullRequest{}
+	orderedNumbers := make([]int, 0, len(numbers))
+	for number := range numbers {
+		orderedNumbers = append(orderedNumbers, number)
+	}
+	sort.Ints(orderedNumbers)
+	for _, number := range orderedNumbers {
+		var response pullRequestByNumberResponse
+		variables := map[string]string{"owner": parts[0], "name": parts[1], "number": strconv.Itoa(number)}
+		if err := c.graphql(ctx, pullRequestByNumberQuery, variables, &response); err != nil {
+			return nil, err
+		}
+		if response.Data.Repository == nil || response.Data.Repository.PullRequest == nil || !response.Data.Repository.PullRequest.Merged {
+			continue
+		}
+		raw := response.Data.Repository.PullRequest
+		included := graph.IncludedPullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, MergedAt: raw.MergedAt}
+		if raw.Author != nil {
+			included.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
+		}
+		result = append(result, included)
+	}
 	return result, nil
+}
+
+func mergedPRNumbers(message string, currentPR int) []int {
+	found := map[int]bool{}
+	for _, pattern := range mergedPRPatterns {
+		for _, match := range pattern.FindAllStringSubmatch(message, -1) {
+			number, _ := strconv.Atoi(match[1])
+			if number > 0 && number != currentPR {
+				found[number] = true
+			}
+		}
+	}
+	numbers := make([]int, 0, len(found))
+	for number := range found {
+		numbers = append(numbers, number)
+	}
+	sort.Ints(numbers)
+	return numbers
 }
 
 func convert(raw rawPR) *graph.PullRequest {

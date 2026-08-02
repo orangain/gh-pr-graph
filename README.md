@@ -10,7 +10,7 @@ The current MVP provides:
 - Blue / green / gray nodes for your PRs, review requests, and other PRs
 - Thick borders for ready PRs and thin borders plus a badge for drafts
 - Aggregated review, CI, and conflict status
-- Lazy, collapsible discovery of merged PRs included in a PR's commits
+- Collapsible discovery of merged PRs detected from a PR's commit messages
 - A visible loading progress indicator during GitHub API requests
 - Repository lanes that keep repository-to-PR edges short
 - Five-minute auto refresh that pauses in hidden or offline tabs

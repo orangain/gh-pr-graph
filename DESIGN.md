@@ -168,21 +168,9 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-「PR 内にマージされた」の定義は曖昧になりやすいため、次の厳密な意味に固定する。
+グラフ取得中に各PRの差分commit messageを最大300件まで走査する。`Merge pull request #123`や`Merged ... #123`を検出した場合だけ、同じrepositoryの対象番号についてPR情報を追加取得する。取得したPRが実際にmergedの場合だけIncluded PRとして採用する。
 
-> merged PR の merge commit が、表示対象 PR の head commit から到達可能であり、同 PR の base commit からは到達できない。
-
-つまり、対象ブランチが今回追加する履歴の中に merge commit がある場合だけ included とする。既に default branch に入っている過去 PR は除外する。
-
-GitHub API だけで全候補に compare API を実行すると rate limit が厳しいため、段階的に取得する。
-
-1. GraphQL で対象 PR の base/head OID と、head 側 commit history をページング取得する（初期上限 250 commits）。
-2. commit の `associatedPullRequests` と merge commit OID から merged PR 候補を集める。
-3. base 側にも存在する commit は除外する。
-4. squash/rebase merge は merge commit だけでは完全判定できないため、初期版では `exact` と断定せず `possibly included` とする。
-5. 250 commits を超えた場合は結果を `truncated: true` とし、UI に「一部のみ」と表示する。
-
-この機能は高コストなので、グラフ本体の表示後に `/api/v1/included?id=:id` から lazy load する。タイトル右端のbranch iconを押したときだけ取得し、結果は画面内で保持する。
+全PRについて先に判定を完了してgraph responseへ含める。Included PRが1件以上あるノードだけにbranch iconを表示し、クリックで取得済み一覧を開閉する。追加の遅延API requestは発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
 ## 6. アーキテクチャ
 
@@ -202,7 +190,7 @@ gh-pr-graph (Go process)
 ├── HTTP server (127.0.0.1:random)
 │   ├── embedded SPA
 │   ├── JSON API
-│   └── Server-Sent Events (progress / refresh)
+│   └── NDJSON stream (progress / final graph)
 ├── GitHub service
 │   ├── search + hydration
 │   ├── included-PR resolver
@@ -244,9 +232,8 @@ GraphQL cost を抑えるため connection は小さい上限から開始し、a
 ### キャッシュ
 
 - memory cache: query と viewer ごとに 60 秒
-- included PR cache: `(host, prID, baseOID, headOID)` ごとにプロセス存続中保持
 - `Refresh` は query cache を無効化する
-- 5 分 polling は query cache を再検証し、前回と同じ head OID の included PR cache は再利用する
+- 5 分 polling は query cache を再検証する
 - 初期版では disk cache を持たず、token や private repository 情報を残さない
 - rate limit 到達時は古い結果を保持したまま reset time を表示する
 
@@ -255,7 +242,6 @@ GraphQL cost を抑えるため connection は小さい上限から開始し、a
 ```text
 GET  /api/v1/session
 GET  /api/v1/graph?q=...&state=open&cursor=...
-GET  /api/v1/pr/{node-id}/included
 POST /api/v1/refresh
 GET  /api/v1/events                 # SSE
 GET  /healthz
@@ -288,7 +274,6 @@ internal/
   app/              # 起動、終了、依存組み立て
   github/           # GraphQL/REST client と query
   graph/            # node/edge 構築、cycle 処理、rank 計算
-  included/         # commit 到達性と included PR 判定
   server/           # HTTP handler、SSE、embed assets
   cache/
 web/
@@ -320,7 +305,7 @@ docs/
 
 - graph builder: table-driven test（単純、分岐、stack、fork、branch 欠落、cycle）
 - downstream discovery: 複数階層、分岐、seed 合流、循環、重複排除、上限到達のテスト
-- included resolver: commit DAG fixture による到達性テスト
+- included resolver: merge commit message、重複番号、現在のPR番号除外のテスト
 - GitHub client: `httptest.Server` と固定 GraphQL response による pagination/cost/error テスト
 - HTTP API: handler contract と Origin/session validation
 - frontend: component test、keyboard navigation、色以外の状態表現
@@ -350,9 +335,9 @@ docs/
 
 ### Phase 3: Included PR
 
-- commit history 取得と lazy resolver
-- exact / possibly included / truncated 表現
-- fixture と大規模履歴の performance test
+- commit message走査と候補PRの条件付き取得
+- Included PRがあるノードだけの折りたたみ表示
+- 大規模履歴のperformance test
 
 ### Phase 4: 配布品質
 
@@ -372,7 +357,7 @@ docs/
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、graph の viewport と展開状態を維持する。非表示 tab と offline 中は polling しない。
-11. included PR の取得失敗や truncation が graph 全体の表示を妨げない。
+11. Included PRの走査進捗がprogress barへ反映され、個別の取得失敗がgraph全体の表示を妨げない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断
@@ -380,7 +365,7 @@ docs/
 - 初期版は読み取り専用とする。
 - stacked PR edge はブランチ identity による exact match を基本とする。
 - 検索結果を seed とし、head branch を base にする open PR を再帰的に補完する。
-- included PR は commit 到達性で定義し、squash/rebase は「可能性あり」と区別する。
+- Included PRは標準的なmerge commit messageから候補を検出し、merged PR情報を確認して確定する。
 - backend は Go、frontend は React、単一バイナリへ埋め込む。
 - 複数 repository を一画面に表示し、repository ごとに独立した root を持つ forest とする。
 

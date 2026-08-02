@@ -8,29 +8,30 @@ type User struct {
 }
 
 type PullRequest struct {
-	ID                string    `json:"id"`
-	Number            int       `json:"number"`
-	Title             string    `json:"title"`
-	URL               string    `json:"url"`
-	IsDraft           bool      `json:"isDraft"`
-	UpdatedAt         time.Time `json:"updatedAt"`
-	Author            User      `json:"author"`
-	RepositoryID      string    `json:"repositoryId"`
-	Repository        string    `json:"repository"`
-	DefaultBranch     string    `json:"defaultBranch"`
-	BaseRefName       string    `json:"baseRefName"`
-	HeadRefName       string    `json:"headRefName"`
-	HeadRepositoryID  string    `json:"headRepositoryId"`
-	HeadRepository    string    `json:"headRepository"`
-	Assignees         []User    `json:"assignees"`
-	ReviewDecision    string    `json:"reviewDecision,omitempty"`
-	ReviewApproved    int       `json:"reviewApproved"`
-	ReviewTotal       int       `json:"reviewTotal"`
-	TeamReviewPending bool      `json:"teamReviewPending,omitempty"`
-	CIState           string    `json:"ciState,omitempty"`
-	Mergeable         string    `json:"mergeable,omitempty"`
-	Relation          string    `json:"relation"`
-	Source            string    `json:"source"`
+	ID                string                `json:"id"`
+	Number            int                   `json:"number"`
+	Title             string                `json:"title"`
+	URL               string                `json:"url"`
+	IsDraft           bool                  `json:"isDraft"`
+	UpdatedAt         time.Time             `json:"updatedAt"`
+	Author            User                  `json:"author"`
+	RepositoryID      string                `json:"repositoryId"`
+	Repository        string                `json:"repository"`
+	DefaultBranch     string                `json:"defaultBranch"`
+	BaseRefName       string                `json:"baseRefName"`
+	HeadRefName       string                `json:"headRefName"`
+	HeadRepositoryID  string                `json:"headRepositoryId"`
+	HeadRepository    string                `json:"headRepository"`
+	Assignees         []User                `json:"assignees"`
+	ReviewDecision    string                `json:"reviewDecision,omitempty"`
+	ReviewApproved    int                   `json:"reviewApproved"`
+	ReviewTotal       int                   `json:"reviewTotal"`
+	TeamReviewPending bool                  `json:"teamReviewPending,omitempty"`
+	CIState           string                `json:"ciState,omitempty"`
+	Mergeable         string                `json:"mergeable,omitempty"`
+	Relation          string                `json:"relation"`
+	Source            string                `json:"source"`
+	IncludedPRs       []IncludedPullRequest `json:"includedPullRequests,omitempty"`
 }
 
 type Node struct {
@@ -67,11 +68,6 @@ type IncludedPullRequest struct {
 	URL      string     `json:"url"`
 	Author   User       `json:"author"`
 	MergedAt *time.Time `json:"mergedAt,omitempty"`
-}
-
-type IncludedResult struct {
-	PullRequests []IncludedPullRequest `json:"pullRequests"`
-	Truncated    bool                  `json:"truncated,omitempty"`
 }
 
 func RelationFor(pr *PullRequest, viewer string, directlyReviewRequested bool) string {

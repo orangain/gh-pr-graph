@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,13 +14,17 @@ import (
 
 type fakeLoader struct{ query string }
 
-func (f *fakeLoader) Load(_ context.Context, query string) (graph.Result, error) {
-	f.query = query
+type progressLoader struct{ fakeLoader }
+
+func (f *progressLoader) LoadProgress(_ context.Context, _ string, progress func(int, int, string)) (graph.Result, error) {
+	progress(1, 2, "Inspecting included pull requests")
+	progress(2, 2, "Inspecting included pull requests")
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
 }
 
-func (f *fakeLoader) Included(_ context.Context, _ string) (graph.IncludedResult, error) {
-	return graph.IncludedResult{}, nil
+func (f *fakeLoader) Load(_ context.Context, query string) (graph.Result, error) {
+	f.query = query
+	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
 }
 
 func TestGraphHandler(t *testing.T) {
@@ -48,11 +53,33 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestIncludedHandlerRequiresID(t *testing.T) {
-	s := New(&fakeLoader{})
+func TestProgressPercent(t *testing.T) {
+	tests := []struct {
+		current, total int
+		phase          string
+		want           int
+	}{
+		{1, 2, "Searching pull requests", 10},
+		{1, 2, "Discovering stacked pull requests", 35},
+		{1, 2, "Inspecting included pull requests", 75},
+		{1, 1, "Complete", 100},
+	}
+	for _, tt := range tests {
+		if got := progressPercent(tt.current, tt.total, tt.phase); got != tt.want {
+			t.Errorf("progressPercent(%d, %d, %q) = %d, want %d", tt.current, tt.total, tt.phase, got, tt.want)
+		}
+	}
+}
+
+func TestGraphStreamsProgressAndResult(t *testing.T) {
+	s := New(&progressLoader{})
 	recorder := httptest.NewRecorder()
-	s.included(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/included", nil))
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil))
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"percent":75`) || !strings.Contains(body, `"percent":100`) || !strings.Contains(body, `"type":"result"`) {
+		t.Fatalf("unexpected stream: %s", body)
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {
+		t.Fatalf("content type = %q", got)
 	}
 }
