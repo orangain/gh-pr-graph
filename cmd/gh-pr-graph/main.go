@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/orangain/gh-pr-graph/internal/demo"
 	"github.com/orangain/gh-pr-graph/internal/github"
 	"github.com/orangain/gh-pr-graph/internal/oteltrace"
 	"github.com/orangain/gh-pr-graph/internal/server"
@@ -32,6 +33,10 @@ func main() {
 	}
 
 	client := github.New(hostname)
+	var loader server.Loader = client
+	if os.Getenv("GH_PR_GRAPH_DEMO") == "1" {
+		loader = demo.New()
+	}
 	var exporter *oteltrace.Exporter
 	if traceOTEL.set {
 		var err error
@@ -42,7 +47,7 @@ func main() {
 		}
 		client.Tracer = exporter
 	}
-	app := server.New(client)
+	app := server.New(loader)
 	if exporter != nil {
 		app.SetTracer(exporter)
 	}

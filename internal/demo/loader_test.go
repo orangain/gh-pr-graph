@@ -1,0 +1,31 @@
+package demo
+
+import (
+	"context"
+	"testing"
+
+	"github.com/orangain/gh-pr-graph/internal/graph"
+)
+
+func TestLoadProvidesScreenshotScenario(t *testing.T) {
+	result, err := New().Load(context.Background(), graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prs, repos := 0, 0
+	relations := map[string]int{}
+	for _, node := range result.Nodes {
+		if node.Kind == "repository" {
+			repos++
+		} else if node.Kind == "pullRequest" {
+			prs++
+			relations[node.PR.Relation]++
+		}
+	}
+	if repos != 2 || prs != 5 {
+		t.Fatalf("repositories/PRs = %d/%d, want 2/5", repos, prs)
+	}
+	if relations["mine"] != 2 || relations["review-requested"] != 2 || relations["other"] != 1 {
+		t.Fatalf("relations = %+v", relations)
+	}
+}
