@@ -83,7 +83,7 @@ PR ノードには以下を表示する。
 
 たとえば viewer が assignee かつ reviewer の場合は青を採用する。背景色には `My PR`、`Review requested`、`Other` の accessible label を対応させ、色だけに依存しない。dark mode と WCAG AA を考慮した CSS custom properties を使う。
 
-枠線は draft 状態を表す。ready for review の PR は太い実線、draft は細い実線とし、draft には `Draft` badge も表示する。これにより背景色と直交した二つの軸として判別できる。
+枠線は draft 状態を表す。ready for review の PR は太い実線、draft は細い実線とする。さらにタイトル先頭へPrimer Octiconsの`git-pull-request`または`git-pull-request-draft`を表示し、状態を統一した視覚表現で判別できるようにする。
 
 レビュー状態、CI、conflict は背景色や枠線を変更せず、ノード下部の status row に icon と label で表示する。
 
@@ -109,7 +109,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 ### 折りたたみ
 
-現在の PR の head 履歴に取り込まれている merged PR を、ノード下部の `Included PRs (N)` に折りたたんで表示する。展開行には番号、タイトル、author、mergedAt、リンクを表示する。
+現在の PR の head 履歴に取り込まれている merged PR がある場合だけ、status rowの下にOcticonsの`chevron-right`と`Included PRs (N)`を表示する。クリックで`chevron-down`へ変化し、番号、タイトル、リンクの一覧を展開する。
 
 表示状態（検索文字列、filter、折りたたみ、viewport）は URL query parameter に保存し、再読み込みと URL 共有に耐えるようにする。ただしサーバーはローカルなので URL 自体を他端末から開く用途は想定しない。
 
