@@ -87,7 +87,7 @@ async function readGraphResponse(response,trackProgress=true){
 function includedSignature(pr){return [...new Set(pr.includedPullRequests.map(item=>item.number))].sort((a,b)=>a-b).join(',')}
 async function inspectPullRequests(result){
  const nodes=result.nodes.filter(node=>node.kind==='pullRequest'),pending=[];let completed=0;
- const finish=node=>{completed++;setLoadProgress(65+Math.round(completed/Math.max(1,nodes.length)*35),'Inspecting included pull requests');return node};
+ const finish=node=>{completed++;setLoadProgress(65+Math.round(completed/Math.max(1,nodes.length)*35),'Inspecting pull request commits');return node};
  for(const node of nodes){const pr=node.pullRequest,version=pr.headCommitSha&&pr.baseCommitSha?`${pr.headCommitSha}\0${pr.baseCommitSha}`:'',cached=inspectCache.get(pr.id);if(version&&cached?.version===version){pr.includedPullRequests=cached.value;finish(node)}else pending.push({node,version})}
  let cursor=0;
  async function worker(){while(cursor<pending.length){const item=pending[cursor++],pr=item.node.pullRequest,response=await fetch('/api/v1/inspect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:pr.id,number:pr.number,repository:pr.repository,headCommitSha:pr.headCommitSha,baseCommitSha:pr.baseCommitSha})});if(!response.ok)throw new Error(await response.text()||response.statusText);const update=await response.json();pr.includedPullRequests=update.includedPullRequests||[];if(item.version)inspectCache.set(pr.id,{version:item.version,value:pr.includedPullRequests});finish(item.node)}}

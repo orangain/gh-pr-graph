@@ -108,7 +108,7 @@ func TestGraphStreamsProgressAndResult(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil))
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"type":"result"`) {
+	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"phase":"Inspecting pull request commits"`) || !strings.Contains(body, `"type":"result"`) {
 		t.Fatalf("unexpected stream: %s", body)
 	}
 	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {
