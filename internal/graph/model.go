@@ -44,6 +44,7 @@ type PullRequest struct {
 	Relation          string                `json:"relation"`
 	Source            string                `json:"source"`
 	IncludedPRs       []IncludedPullRequest `json:"includedPullRequests,omitempty"`
+	IncludedTruncated bool                  `json:"includedPullRequestsTruncated,omitempty"`
 }
 
 type Node struct {
@@ -95,6 +96,7 @@ type IncludedPullRequest struct {
 type IncludedUpdate struct {
 	PullRequestID        string                `json:"pullRequestId"`
 	IncludedPullRequests []IncludedPullRequest `json:"includedPullRequests"`
+	Truncated            bool                  `json:"includedPullRequestsTruncated,omitempty"`
 }
 
 func RelationFor(pr *PullRequest, viewer string, directlyReviewRequested bool) string {

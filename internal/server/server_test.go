@@ -31,7 +31,7 @@ func (f *progressLoader) LoadIncluded(_ context.Context, prs []*graph.PullReques
 }
 
 func (f *progressLoader) InspectPullRequest(_ context.Context, pr *graph.PullRequest) (graph.IncludedUpdate, error) {
-	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: []graph.IncludedPullRequest{{Number: 42}}}, nil
+	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: []graph.IncludedPullRequest{{Number: 42}}, Truncated: true}, nil
 }
 
 func (f *fakeLoader) Load(_ context.Context, options graph.SearchOptions) (graph.Result, error) {
@@ -121,7 +121,7 @@ func TestInspectReturnsIncludedCandidates(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/inspect", strings.NewReader(`{"id":"pr1","number":99}`))
 	s.inspect(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"number":42`) {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"number":42`) || !strings.Contains(recorder.Body.String(), `"includedPullRequestsTruncated":true`) {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }

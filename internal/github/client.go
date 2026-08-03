@@ -27,10 +27,10 @@ const searchQuery = `query($q:String!){
   }
 }`
 
-const commitMessagesQuery = `query($id:ID!,$after:String){
+const commitMessagesQuery = `query($id:ID!){
   node(id:$id){... on PullRequest{
-    commits(first:100,after:$after){
-      pageInfo{hasNextPage endCursor}
+    commits(last:100){
+      pageInfo{hasPreviousPage}
       nodes{commit{messageHeadline messageBody}}
     }
   }}
@@ -140,8 +140,7 @@ type commitMessagesResponse struct {
 		Node *struct {
 			Commits struct {
 				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
+					HasPreviousPage bool
 				}
 				Nodes []struct {
 					Commit struct{ MessageHeadline, MessageBody string }
@@ -491,7 +490,7 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 	}
 	parentsByCandidate := map[includedCandidate][]string{}
 	for _, pr := range prs {
-		for _, included := range pr.IncludedPRs {
+		for _, included := range includedDetailCandidates(pr.IncludedPRs) {
 			key := includedCandidate{repository: pr.Repository, number: included.Number}
 			parentsByCandidate[key] = append(parentsByCandidate[key], pr.ID)
 		}
@@ -522,14 +521,24 @@ func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, pro
 				hydrated = append(hydrated, candidate)
 			}
 		}
-		updates = append(updates, graph.IncludedUpdate{PullRequestID: parent.ID, IncludedPullRequests: hydrated})
+		updates = append(updates, graph.IncludedUpdate{PullRequestID: parent.ID, IncludedPullRequests: hydrated, Truncated: parent.IncludedTruncated})
 	}
 	sort.Slice(updates, func(i, j int) bool { return updates[i].PullRequestID < updates[j].PullRequestID })
 	return updates, nil
 }
 
+func includedDetailCandidates(included []graph.IncludedPullRequest) []graph.IncludedPullRequest {
+	if len(included) <= 6 {
+		return included
+	}
+	selected := make([]graph.IncludedPullRequest, 0, 6)
+	selected = append(selected, included[:3]...)
+	selected = append(selected, included[len(included)-3:]...)
+	return selected
+}
+
 func (c *Client) InspectPullRequest(ctx context.Context, pr *graph.PullRequest) (graph.IncludedUpdate, error) {
-	candidates, err := c.discoverIncludedCandidates(ctx, []*graph.PullRequest{pr}, nil)
+	candidates, truncated, err := c.discoverIncludedCandidates(ctx, []*graph.PullRequest{pr}, nil)
 	if err != nil {
 		return graph.IncludedUpdate{}, err
 	}
@@ -537,22 +546,24 @@ func (c *Client) InspectPullRequest(ctx context.Context, pr *graph.PullRequest) 
 	if included == nil {
 		included = []graph.IncludedPullRequest{}
 	}
-	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: included}, nil
+	return graph.IncludedUpdate{PullRequestID: pr.ID, IncludedPullRequests: included, Truncated: truncated[pr.ID]}, nil
 }
 
-func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (map[string][]graph.IncludedPullRequest, error) {
+func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (map[string][]graph.IncludedPullRequest, map[string]bool, error) {
 	candidates := map[string][]graph.IncludedPullRequest{}
+	truncated := map[string]bool{}
 	if len(prs) == 0 {
 		if progress != nil {
 			progress(1, 1, "Inspecting included pull requests")
 		}
-		return candidates, nil
+		return candidates, truncated, nil
 	}
 	type job struct{ pr *graph.PullRequest }
 	type scanResult struct {
-		pr      *graph.PullRequest
-		numbers []int
-		err     error
+		pr        *graph.PullRequest
+		numbers   []int
+		truncated bool
+		err       error
 	}
 	jobs := make(chan job)
 	results := make(chan scanResult, len(prs))
@@ -566,8 +577,8 @@ func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.Pu
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				numbers, err := c.includedNumbersFromMessages(ctx, item.pr)
-				results <- scanResult{pr: item.pr, numbers: numbers, err: err}
+				numbers, hasMore, err := c.includedNumbersFromMessages(ctx, item.pr)
+				results <- scanResult{pr: item.pr, numbers: numbers, truncated: hasMore, err: err}
 			}
 		}()
 	}
@@ -586,6 +597,7 @@ func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.Pu
 		if result.err != nil {
 			errorsSeen++
 		} else {
+			truncated[result.pr.ID] = result.truncated
 			for _, number := range result.numbers {
 				candidates[result.pr.ID] = append(candidates[result.pr.ID], graph.IncludedPullRequest{Number: number})
 			}
@@ -595,12 +607,9 @@ func (c *Client) discoverIncludedCandidates(ctx context.Context, prs []*graph.Pu
 		}
 	}
 	if errorsSeen > 0 {
-		return nil, fmt.Errorf("%d of %d commit scans failed", errorsSeen, len(prs))
+		return nil, nil, fmt.Errorf("%d of %d commit scans failed", errorsSeen, len(prs))
 	}
-	for parentID := range candidates {
-		sort.Slice(candidates[parentID], func(i, j int) bool { return candidates[parentID][i].Number < candidates[parentID][j].Number })
-	}
-	return candidates, nil
+	return candidates, truncated, nil
 }
 
 func (c *Client) fetchIncludedPullRequests(ctx context.Context, parentsByCandidate map[includedCandidate][]string) (map[string][]graph.IncludedPullRequest, error) {
@@ -664,43 +673,39 @@ func buildIncludedPullRequestsQuery(parentsByCandidate map[includedCandidate][]s
 	return query.String(), byAlias
 }
 
-func (c *Client) includedNumbersFromMessages(ctx context.Context, pr *graph.PullRequest) (result []int, resultErr error) {
+func (c *Client) includedNumbersFromMessages(ctx context.Context, pr *graph.PullRequest) (result []int, truncated bool, resultErr error) {
 	ctx, inspectSpan := c.startSpan(ctx, "inspect pull request commits", oteltrace.SpanInternal, oteltrace.Attributes{"pr.repository": pr.Repository, "pr.number": pr.Number})
 	if inspectSpan != nil {
 		defer func() { inspectSpan.End(resultErr, oteltrace.Attributes{"pr.candidate_count": len(result)}) }()
 	}
-	numbers := map[int]bool{}
-	after := ""
-	for page := 0; page < 3; page++ {
-		variables := map[string]string{"id": pr.ID}
-		if after != "" {
-			variables["after"] = after
-		}
-		var response commitMessagesResponse
-		if err := c.graphql(ctx, "list pull request commits", commitMessagesQuery, variables, &response); err != nil {
-			return nil, err
-		}
-		if response.Data.Node == nil {
-			return nil, fmt.Errorf("pull request %s not found", pr.ID)
-		}
-		for _, node := range response.Data.Node.Commits.Nodes {
-			message := node.Commit.MessageHeadline + "\n" + node.Commit.MessageBody
-			for _, number := range mergedPRNumbers(message, pr.Number) {
-				numbers[number] = true
+	var response commitMessagesResponse
+	if err := c.graphql(ctx, "list latest pull request commits", commitMessagesQuery, map[string]string{"id": pr.ID}, &response); err != nil {
+		return nil, false, err
+	}
+	if response.Data.Node == nil {
+		return nil, false, fmt.Errorf("pull request %s not found", pr.ID)
+	}
+	nodes := response.Data.Node.Commits.Nodes
+	messages := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		messages = append(messages, node.Commit.MessageHeadline+"\n"+node.Commit.MessageBody)
+	}
+	result = includedNumbersNewestFirst(messages, pr.Number)
+	return result, response.Data.Node.Commits.PageInfo.HasPreviousPage, nil
+}
+
+func includedNumbersNewestFirst(messages []string, currentPR int) []int {
+	seen := map[int]bool{}
+	numbers := []int{}
+	for i := len(messages) - 1; i >= 0; i-- {
+		for _, number := range mergedPRNumbers(messages[i], currentPR) {
+			if !seen[number] {
+				seen[number] = true
+				numbers = append(numbers, number)
 			}
 		}
-		pageInfo := response.Data.Node.Commits.PageInfo
-		if !pageInfo.HasNextPage {
-			break
-		}
-		after = pageInfo.EndCursor
 	}
-	result = make([]int, 0, len(numbers))
-	for number := range numbers {
-		result = append(result, number)
-	}
-	sort.Ints(result)
-	return result, nil
+	return numbers
 }
 
 func mergedPRNumbers(message string, currentPR int) []int {

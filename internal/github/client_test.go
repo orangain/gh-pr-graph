@@ -89,6 +89,44 @@ func TestMergedPRNumbersExcludesCurrentPR(t *testing.T) {
 	}
 }
 
+func TestIncludedNumbersNewestFirst(t *testing.T) {
+	messages := []string{
+		"Merge pull request #10 from org/oldest",
+		"Merge pull request #20 from org/middle",
+		"Merge pull request #10 from org/repeated-latest",
+	}
+	got := includedNumbersNewestFirst(messages, 99)
+	if len(got) != 2 || got[0] != 10 || got[1] != 20 {
+		t.Fatalf("included PR numbers = %v, want [10 20]", got)
+	}
+}
+
+func TestCommitMessagesQueryFetchesOnlyLatestPage(t *testing.T) {
+	if !strings.Contains(commitMessagesQuery, "commits(last:100)") || !strings.Contains(commitMessagesQuery, "hasPreviousPage") {
+		t.Fatalf("query does not fetch the latest commit page: %s", commitMessagesQuery)
+	}
+	if strings.Contains(commitMessagesQuery, "$after") || strings.Contains(commitMessagesQuery, "hasNextPage") {
+		t.Fatalf("query unexpectedly supports forward pagination: %s", commitMessagesQuery)
+	}
+}
+
+func TestIncludedDetailCandidatesSelectsFirstAndLastThree(t *testing.T) {
+	included := make([]graph.IncludedPullRequest, 8)
+	for i := range included {
+		included[i].Number = i + 1
+	}
+	got := includedDetailCandidates(included)
+	want := []int{1, 2, 3, 6, 7, 8}
+	if len(got) != len(want) {
+		t.Fatalf("selected candidates = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Number != want[i] {
+			t.Fatalf("selected candidate %d = #%d, want #%d", i, got[i].Number, want[i])
+		}
+	}
+}
+
 func TestBuildIncludedPullRequestsQueryBatchesCandidates(t *testing.T) {
 	parents := map[includedCandidate][]string{
 		{repository: "orangain/one", number: 12}: {"parent1"},

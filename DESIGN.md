@@ -114,7 +114,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 ### 折りたたみ
 
-現在の PR の head 履歴に取り込まれている merged PR がある場合だけ、status rowの下にOcticonsの`chevron-right`と`Included PRs (N)`を表示する。クリックで`chevron-down`へ変化し、番号、タイトル、リンクの一覧を展開する。
+現在の PR の最新100 commitに取り込まれているmerged PRがある場合、status rowの下にOcticonsの`chevron-right`と`Included PRs (N)`を表示する。100件より古いcommitがある場合は件数を下限として`Included PRs (N+)`、候補を1件も検出できなければ`Included PRs (?)`とする。`(?)`は展開不可とする。`N`と`N+`はクリックで`chevron-down`へ変化し、検出した候補を最新merge commit順に表示する。
 
 検索文字列と関係scopeは URL query parameter に保存し、再読み込みと URL 共有に耐えるようにする。`Show bots`、折りたたみ、viewportはセッション中だけの状態とする。ただしサーバーはローカルなので URL 自体を他端末から開く用途は想定しない。
 
@@ -187,9 +187,9 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-`GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。初回ロード中のprogress textには現在の処理phaseと、目安のpercentに代えて重複排除後に収集済みのPR数を表示する。PR一覧が確定してgraphを描画した後は件数を外し、処理phaseだけを表示する。progress barの長さは従来どおりpercentを使う。browserはPR一覧が確定した時点でprogressを65%のままgraphを先に描画し、親PR単位で`POST /api/v1/inspect`を呼ぶ。差分commit messageを最大300件まで走査して`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出し、全PRの候補数が確定した時点でgraphを更新してprogressを100%にする。この更新による多少のレイアウトシフトは許容する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとしてメモリキャッシュし、両SHAが同じなら再走査しない。リロード時は新しい候補数が確定するまで前回のIncluded PR候補と詳細を同じPR IDへ引き継ぎ、トグルが一時的に消えることを防ぐ。候補setが変わらなければ取得済みの詳細も維持する。
+`GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。初回ロード中のprogress textには現在の処理phaseと、目安のpercentに代えて重複排除後に収集済みのPR数を表示する。PR一覧が確定してgraphを描画した後は件数を外し、処理phaseだけを表示する。progress barの長さは従来どおりpercentを使う。browserはPR一覧が確定した時点でprogressを65%のままgraphを先に描画し、親PR単位で`POST /api/v1/inspect`を呼ぶ。commit inspectionは`commits(last:100)`の1requestだけを使い、最新commitから古いcommitの順に`Merge pull request #123`や`Merged ... #123`を走査してIncluded PR番号を重複排除する。`hasPreviousPage`がtrueでもpaginationせず、検出数を下限として扱う。全PRの候補数が確定した時点でgraphを更新してprogressを100%にする。この更新による多少のレイアウトシフトは許容する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとして、順序付き候補番号とtruncated状態をメモリキャッシュし、両SHAが同じなら再走査しない。リロード時は新しい候補数が確定するまで前回のIncluded PR候補と詳細を同じPR IDへ引き継ぎ、トグルが一時的に消えることを防ぐ。候補setとtruncated状態が変わらなければ取得済みの詳細も維持する。
 
-初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。browserは親PR IDごとに番号setと詳細をメモリキャッシュし、次回更新でsetが同じなら通信せずキャッシュを反映する。setが変わった親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
+commit inspection responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。タイトル、URL、作者などの詳細は順序付き候補の先頭3件と末尾3件だけ取得し、候補が6件以下なら全件取得する。中間候補は`… N more found`のクリック後に番号リンクだけを表示し、追加requestを発生させない。truncatedの場合は検出済み候補の末尾に`and more…`を表示する。browserは親PR IDごとに順序付き番号とtruncated状態をsignatureとして詳細をメモリキャッシュし、次回更新でsignatureが同じなら通信せずキャッシュを反映する。変化した親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
 ## 6. アーキテクチャ
 
@@ -382,7 +382,7 @@ docs/
 11. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 12. viewerのレビュー後に再度レビュー依頼されたPRは、カード右上の円形`sync` badgeで識別できる。
 13. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
-14. メイングラフ取得後、browserはPR一覧が確定したgraphをprogress 65%の時点で描画する。commit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ったらgraphを更新し、progress barを100%にして閉じる。リロード中は前回のIncluded PR情報を表示し続ける。100%到達後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
+14. メイングラフ取得後、browserはPR一覧が確定したgraphをprogress 65%の時点で描画する。commit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で最新100 commitを走査する。全候補番号が揃ったらgraphを更新し、progress barを100%にして閉じる。古いcommitが残る場合は件数を`N+`または`?`で表し、paginationしない。リロード中は前回のIncluded PR情報を表示し続ける。100%到達後に先頭3件と末尾3件だけのPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 15. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断
