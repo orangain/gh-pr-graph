@@ -87,6 +87,36 @@ func TestBuildDownstreamQueryBatchesBranches(t *testing.T) {
 	}
 }
 
+func TestBuildUpstreamQueryBatchesBranches(t *testing.T) {
+	targets := []upstreamQueryTarget{
+		{owner: "orangain", name: "one", head: "feature/a"},
+		{owner: "orangain", name: "two", head: "feature/b"},
+	}
+	query, aliases := buildUpstreamQuery(targets)
+	if len(aliases) != 2 {
+		t.Fatalf("aliases = %d, want 2", len(aliases))
+	}
+	if strings.Count(query, "query{") != 1 || strings.Count(query, "pullRequests(first:100") != 2 {
+		t.Fatalf("expected one batched query containing two branches: %s", query)
+	}
+	if !strings.Contains(query, `headRefName:"feature/a"`) || !strings.Contains(query, `headRefName:"feature/b"`) {
+		t.Fatalf("query does not contain both head branches: %s", query)
+	}
+	if strings.Contains(query, "baseRefName:") {
+		t.Fatalf("upstream query unexpectedly filters base branches: %s", query)
+	}
+}
+
+func TestIsUpstreamParentRequiresExactRepositoryAndBranch(t *testing.T) {
+	child := &graph.PullRequest{RepositoryID: "base-repo", BaseRefName: "feature/a"}
+	if !isUpstreamParent(&graph.PullRequest{HeadRepositoryID: "base-repo", HeadRefName: "feature/a"}, child) {
+		t.Fatal("matching repository and branch were not recognized as upstream")
+	}
+	if isUpstreamParent(&graph.PullRequest{HeadRepositoryID: "fork-repo", HeadRefName: "feature/a"}, child) {
+		t.Fatal("same-named branch from a fork was recognized as upstream")
+	}
+}
+
 func TestBuildSearchSpecsTreatsQueryAsFourthORCondition(t *testing.T) {
 	specs := buildSearchSpecs(graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Query: "repo:orangain/example"})
 	if len(specs) != 4 || specs[3].query != "repo:orangain/example" {

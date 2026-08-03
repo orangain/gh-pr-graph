@@ -132,6 +132,17 @@ baseがdefault branchではなく、同じbaseをheadに持つ親PRもgraph内�
 
 同じ head branch を持つ複数 PR、削除済み branch、循環的に見える不正データは例外として扱う。edge の確度を `exact | inferred` で保持し、exact edge を優先する。循環を検出した場合は更新日時の古い inferred edge を切り、警告 badge を付ける。
 
+### 上流 stack の再帰探索
+
+検索に直接一致した各PRのbase branchがdefault branchでない場合、そのbase branchをheadに持つopen PRを親として取得する。見つかった親PRについても同じ探索を繰り返し、default branchまたは安全上限へ到達するまで上流のstackを補完する。
+
+```text
+head: feature-a の #118
+       └─ 検索に一致した base: feature-a の #120
+```
+
+同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめる。branch identityは`(repository ID, ref name)`で照合し、forkにある同名branchのPRは親として採用しない。上流探索のseedは検索に直接一致したPRだけとし、上流で見つけた親から別の下流PRへ探索範囲を広げない。
+
 ### 下流 stack の再帰探索
 
 既定検索またはユーザー検索に直接一致した PR だけではなく、その後続タスクも表示する。検索結果を seed PR とし、各 seed の head branch を base にする open PR を取得する。見つかった PR の head branch について同じ探索を繰り返し、下流の stack を再帰的に補完する。
@@ -217,7 +228,7 @@ frontend に GitHub token を渡さない。すべての GitHub 通信を Go pro
 
 GraphQL `search(type: ISSUE)` で node ID の集合を取得し、PR fragment で表示項目を hydrate する。選択された関係条件と任意の第4検索条件をそれぞれ並列実行し、global node ID で重複排除する。
 
-hydrate 後、各 PR の `(headRepository ID, headRefName)` に対して対象 repository の `pullRequests(baseRefName: ..., states: OPEN)` を問い合わせ、下流 PR を breadth-first で再帰取得する。同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめ、branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数はbranch数ではなくstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | downstream` として保持する。
+hydrate 後、各 seed PR の `(repository ID, baseRefName)` から上流PRを、`(headRepository ID, headRefName)` から下流PRをbreadth-firstで再帰取得する。同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめ、branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数はbranch数ではなくstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | upstream | downstream` として保持する。
 
 主な取得フィールド:
 
@@ -358,11 +369,12 @@ docs/
 3. default branch を base にする PR が repository node の右に位置する。
 4. 表示対象 PR の head branch を base にする PR が、さらに右に接続される。
 5. 検索に直接一致しない後続 PR も、各 head branch を起点に再帰探索され、stack の末端または安全上限まで表示される。
-6. PR node から GitHub PR を開け、番号、タイトル、author、review、assign 状態を確認できる。
-7. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
-8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
-9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
-10. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
+6. 検索に直接一致した PR の base branch を head にする親PRも再帰探索され、default branchまたは安全上限まで表示される。
+7. PR node から GitHub PR を開け、番号、タイトル、author、review、assign 状態を確認できる。
+8. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
+9. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
+10. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
+11. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
 11. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 12. GitHub token が frontend、ログ、disk cache に露出しない。
 

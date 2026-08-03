@@ -114,6 +114,7 @@ type rawDownstreamRepository struct {
 }
 
 type downstreamQueryTarget struct{ owner, name, base string }
+type upstreamQueryTarget struct{ owner, name, head string }
 
 type commitMessagesResponse struct {
 	Data struct {
@@ -239,13 +240,17 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		pr.Relation = graph.RelationFor(pr, viewer, reviewSeeds[id])
 		pr.Source = "search"
 	}
+	searchSeeds := make([]*graph.PullRequest, 0, len(byID))
+	for _, pr := range byID {
+		searchSeeds = append(searchSeeds, pr)
+	}
 
 	type item struct {
 		pr    *graph.PullRequest
 		depth int
 	}
-	frontier := make([]item, 0, len(byID))
-	for _, pr := range byID {
+	frontier := make([]item, 0, len(searchSeeds))
+	for _, pr := range searchSeeds {
 		frontier = append(frontier, item{pr, 0})
 	}
 	visitedRefs := map[string]bool{}
@@ -326,11 +331,89 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		}
 		frontier = next
 	}
-	if len(byID) >= c.MaxPRs {
-		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
-	}
 	if downstreamSpan != nil {
 		downstreamSpan.End(nil, oteltrace.Attributes{"pr.discovered_count": len(byID)})
+	}
+
+	frontier = make([]item, 0, len(searchSeeds))
+	for _, pr := range searchSeeds {
+		frontier = append(frontier, item{pr: pr})
+	}
+	visitedUpstreamRefs := map[string]bool{}
+	upstreamCtx, upstreamSpan := c.startSpan(ctx, "discover upstream pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(frontier)})
+	type upstreamJob struct {
+		item  item
+		owner string
+		name  string
+	}
+	for len(frontier) > 0 && len(byID) < c.MaxPRs {
+		jobs := make([]upstreamJob, 0, len(frontier))
+		for _, current := range frontier {
+			if current.depth >= c.MaxDepth || current.pr.Repository == "" || current.pr.BaseRefName == "" || current.pr.BaseRefName == current.pr.DefaultBranch {
+				continue
+			}
+			key := current.pr.RepositoryID + "\x00" + current.pr.BaseRefName
+			if visitedUpstreamRefs[key] {
+				continue
+			}
+			visitedUpstreamRefs[key] = true
+			parts := strings.SplitN(current.pr.Repository, "/", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			jobs = append(jobs, upstreamJob{item: current, owner: parts[0], name: parts[1]})
+		}
+		next := []item{}
+		targets := make([]upstreamQueryTarget, len(jobs))
+		for i, job := range jobs {
+			targets[i] = upstreamQueryTarget{owner: job.owner, name: job.name, head: job.item.pr.BaseRefName}
+		}
+		query, indexesByAlias := buildUpstreamQuery(targets)
+		var response batchDownstreamResponse
+		if len(jobs) > 0 {
+			if err := c.graphql(upstreamCtx, "batch find upstream pull requests", query, nil, &response); err != nil {
+				for _, job := range jobs {
+					warnings = append(warnings, "Could not discover upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName)
+				}
+				frontier = next
+				continue
+			}
+		}
+		for alias, index := range indexesByAlias {
+			job := jobs[index]
+			var repository *rawDownstreamRepository
+			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
+				warnings = append(warnings, "Could not decode upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName)
+				continue
+			}
+			if repository == nil {
+				continue
+			}
+			for _, raw := range repository.PullRequests.Nodes {
+				if len(byID) >= c.MaxPRs {
+					break
+				}
+				pr := convert(raw)
+				if pr == nil || !isUpstreamParent(pr, job.item.pr) {
+					continue
+				}
+				if existing, exists := byID[pr.ID]; exists {
+					next = append(next, item{pr: existing, depth: job.item.depth + 1})
+					continue
+				}
+				pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+				pr.Source = "upstream"
+				byID[pr.ID] = pr
+				next = append(next, item{pr: pr, depth: job.item.depth + 1})
+			}
+		}
+		frontier = next
+	}
+	if upstreamSpan != nil {
+		upstreamSpan.End(nil, oteltrace.Attributes{"pr.discovered_count": len(byID)})
+	}
+	if len(byID) >= c.MaxPRs {
+		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
 	}
 	prs := make([]*graph.PullRequest, 0, len(byID))
 	for _, pr := range byID {
@@ -350,6 +433,23 @@ func buildDownstreamQuery(targets []downstreamQueryTarget) (string, map[string]i
 	}
 	query.WriteByte('}')
 	return query.String(), byAlias
+}
+
+func buildUpstreamQuery(targets []upstreamQueryTarget) (string, map[string]int) {
+	var query strings.Builder
+	query.WriteString("query{")
+	byAlias := make(map[string]int, len(targets))
+	for i, target := range targets {
+		alias := "r" + strconv.Itoa(i)
+		byAlias[alias] = i
+		query.WriteString(alias + ":repository(owner:" + strconv.Quote(target.owner) + ",name:" + strconv.Quote(target.name) + "){pullRequests(first:100,states:OPEN,headRefName:" + strconv.Quote(target.head) + "){nodes{" + prFields + "}}}")
+	}
+	query.WriteByte('}')
+	return query.String(), byAlias
+}
+
+func isUpstreamParent(parent, child *graph.PullRequest) bool {
+	return parent.HeadRepositoryID == child.RepositoryID && parent.HeadRefName == child.BaseRefName
 }
 
 func (c *Client) LoadIncluded(ctx context.Context, prs []*graph.PullRequest, progress func(int, int, string)) (updates []graph.IncludedUpdate, resultErr error) {
