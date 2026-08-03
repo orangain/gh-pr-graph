@@ -14,12 +14,16 @@ func TestLoadProvidesScreenshotScenario(t *testing.T) {
 	}
 	prs, repos := 0, 0
 	relations := map[string]int{}
+	reReviewPR := 0
 	for _, node := range result.Nodes {
 		if node.Kind == "repository" {
 			repos++
 		} else if node.Kind == "pullRequest" {
 			prs++
 			relations[node.PR.Relation]++
+			if node.PR.ReReviewRequested {
+				reReviewPR = node.PR.Number
+			}
 		}
 	}
 	if repos != 2 || prs != 5 {
@@ -27,5 +31,8 @@ func TestLoadProvidesScreenshotScenario(t *testing.T) {
 	}
 	if relations["mine"] != 1 || relations["assigned"] != 1 || relations["review-requested"] != 2 || relations["other"] != 1 {
 		t.Fatalf("relations = %+v", relations)
+	}
+	if reReviewPR != 217 {
+		t.Fatalf("re-review PR = %d, want 217", reReviewPR)
 	}
 }

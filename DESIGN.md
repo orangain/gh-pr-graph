@@ -87,6 +87,8 @@ PR ノードには以下を表示する。
 
 枠線は draft 状態を表す。ready for review の PR は太い実線、draft は細い実線とする。さらにタイトル先頭へPrimer Octiconsの`git-pull-request`または`git-pull-request-draft`を表示し、状態を統一した視覚表現で判別できるようにする。
 
+現在viewerへレビュー依頼されており、viewerの直近レビューより後に同じviewerへの`ReviewRequestedEvent`があるPRは再レビュー待ちと判定する。タイトル行へオレンジのPrimer Octicons `sync`を表示し、`Re-review requested`のtooltipとaccessible labelを付ける。背景色と枠線の意味は変更しない。timelineは検索結果について直近50件を取得し、上流・下流探索のbranch queryには含めない。上限外の古い履歴は再レビュー判定の対象外とする。
+
 レビュー状態、CI、conflict は背景色や枠線を変更せず、ノード下部の status row に icon と label で表示する。
 
 ```text
@@ -239,6 +241,7 @@ repository { id nameWithOwner url defaultBranchRef { name target { oid } } }
 baseRefName, baseRefOid, headRefName, headRefOid
 headRepository { id nameWithOwner }
 assignees, reviewRequests, reviews, latestReviews
+timelineItems (ReviewRequestedEvent, PullRequestReview)
 reviewDecision, mergeable, statusCheckRollup
 ```
 
@@ -374,9 +377,10 @@ docs/
 8. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
 9. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 10. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
-11. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
-11. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
-12. GitHub token が frontend、ログ、disk cache に露出しない。
+11. viewerのレビュー後に再度レビュー依頼されたPRは、タイトル行の`sync` iconで識別できる。
+12. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
+13. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
+14. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断
 

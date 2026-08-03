@@ -23,7 +23,7 @@ const searchQuery = `query($q:String!){
   viewer{login}
   search(query:$q,type:ISSUE,first:100){
     issueCount
-    nodes{... on PullRequest{` + prFields + `}}
+    nodes{... on PullRequest{` + prFields + reviewTimelineFields + `}}
   }
 }`
 
@@ -52,6 +52,14 @@ const prFields = `
   commits(last:1){nodes{commit{statusCheckRollup{state}}}}
 `
 
+const reviewTimelineFields = `
+  timelineItems(last:50,itemTypes:[REVIEW_REQUESTED_EVENT,PULL_REQUEST_REVIEW]){nodes{
+    __typename
+    ... on ReviewRequestedEvent{createdAt requestedReviewer{__typename ... on User{login}}}
+    ... on PullRequestReview{submittedAt author{login}}
+  }}
+`
+
 type Client struct {
 	Hostname string
 	MaxPRs   int
@@ -64,6 +72,16 @@ func New(hostname string) *Client { return &Client{Hostname: hostname, MaxPRs: 5
 type rawUser struct {
 	Login, AvatarURL string
 	Typename         string `json:"__typename"`
+}
+type rawTimelineItem struct {
+	Typename          string `json:"__typename"`
+	CreatedAt         time.Time
+	SubmittedAt       time.Time
+	Author            *rawUser
+	RequestedReviewer struct {
+		Typename string `json:"__typename"`
+		Login    string
+	}
 }
 type rawPR struct {
 	ID, Title, URL, BaseRefName, HeadRefName, BaseRefOid, HeadRefOid, ReviewDecision, Mergeable string
@@ -91,7 +109,8 @@ type rawPR struct {
 			Author *rawUser
 		}
 	}
-	Commits struct {
+	TimelineItems struct{ Nodes []rawTimelineItem }
+	Commits       struct {
 		Nodes []struct {
 			Commit struct{ StatusCheckRollup *struct{ State string } }
 		}
@@ -229,6 +248,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			if spec.reviewRequest || hasViewerRequest(raw, viewer) {
 				reviewSeeds[pr.ID] = true
 			}
+			pr.ReReviewRequested = isReReviewRequested(raw, viewer)
 			byID[pr.ID] = pr
 		}
 		report(completed+1, len(queries), "Searching pull requests")
@@ -322,6 +342,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 						continue
 					}
 					pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+					pr.ReReviewRequested = isReReviewRequested(raw, viewer)
 					pr.Source = "downstream"
 					byID[pr.ID] = pr
 					next = append(next, item{pr, job.item.depth + 1})
@@ -402,6 +423,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 					continue
 				}
 				pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+				pr.ReReviewRequested = isReReviewRequested(raw, viewer)
 				pr.Source = "upstream"
 				byID[pr.ID] = pr
 				next = append(next, item{pr: pr, depth: job.item.depth + 1})
@@ -755,6 +777,22 @@ func hasViewerRequest(raw rawPR, viewer string) bool {
 		}
 	}
 	return false
+}
+
+func isReReviewRequested(raw rawPR, viewer string) bool {
+	if !hasViewerRequest(raw, viewer) {
+		return false
+	}
+	var latestRequest, latestReview time.Time
+	for _, item := range raw.TimelineItems.Nodes {
+		if item.Typename == "ReviewRequestedEvent" && item.RequestedReviewer.Typename == "User" && item.RequestedReviewer.Login == viewer && item.CreatedAt.After(latestRequest) {
+			latestRequest = item.CreatedAt
+		}
+		if item.Typename == "PullRequestReview" && item.Author != nil && item.Author.Login == viewer && item.SubmittedAt.After(latestReview) {
+			latestReview = item.SubmittedAt
+		}
+	}
+	return !latestReview.IsZero() && latestRequest.After(latestReview)
 }
 
 func (c *Client) graphql(ctx context.Context, operation, query string, variables map[string]string, target any) (resultErr error) {

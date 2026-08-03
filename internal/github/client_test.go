@@ -3,9 +3,42 @@ package github
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/orangain/gh-pr-graph/internal/graph"
 )
+
+func TestIsReReviewRequested(t *testing.T) {
+	raw := rawPR{}
+	raw.ReviewRequests.Nodes = append(raw.ReviewRequests.Nodes, struct {
+		RequestedReviewer struct {
+			Typename string `json:"__typename"`
+			Login    string
+			Slug     string
+		}
+	}{})
+	raw.ReviewRequests.Nodes[0].RequestedReviewer.Typename = "User"
+	raw.ReviewRequests.Nodes[0].RequestedReviewer.Login = "viewer"
+	reviewedAt := time.Date(2026, time.August, 1, 10, 0, 0, 0, time.UTC)
+	rerequestedAt := reviewedAt.Add(time.Hour)
+	review := rawTimelineItem{Typename: "PullRequestReview", SubmittedAt: reviewedAt, Author: &rawUser{Login: "viewer"}}
+	request := rawTimelineItem{Typename: "ReviewRequestedEvent", CreatedAt: rerequestedAt}
+	request.RequestedReviewer.Typename = "User"
+	request.RequestedReviewer.Login = "viewer"
+	raw.TimelineItems.Nodes = []rawTimelineItem{review, request}
+
+	if !isReReviewRequested(raw, "viewer") {
+		t.Fatal("review followed by a current request was not recognized as re-review")
+	}
+	raw.TimelineItems.Nodes[1].CreatedAt = reviewedAt.Add(-time.Hour)
+	if isReReviewRequested(raw, "viewer") {
+		t.Fatal("initial request followed by a review was recognized as re-review")
+	}
+	raw.ReviewRequests.Nodes = nil
+	if isReReviewRequested(raw, "viewer") {
+		t.Fatal("PR without a current request was recognized as re-review")
+	}
+}
 
 func TestConvertReviewSummary(t *testing.T) {
 	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha", Author: &rawUser{Login: "dependabot[bot]", Typename: "Bot"}}
@@ -85,6 +118,9 @@ func TestBuildDownstreamQueryBatchesBranches(t *testing.T) {
 	if !strings.Contains(query, `baseRefName:"feature/a"`) || !strings.Contains(query, `baseRefName:"feature/b"`) {
 		t.Fatalf("query does not contain both base branches: %s", query)
 	}
+	if strings.Contains(query, "timelineItems") {
+		t.Fatalf("downstream query unexpectedly includes review timeline: %s", query)
+	}
 }
 
 func TestBuildUpstreamQueryBatchesBranches(t *testing.T) {
@@ -104,6 +140,15 @@ func TestBuildUpstreamQueryBatchesBranches(t *testing.T) {
 	}
 	if strings.Contains(query, "baseRefName:") {
 		t.Fatalf("upstream query unexpectedly filters base branches: %s", query)
+	}
+	if strings.Contains(query, "timelineItems") {
+		t.Fatalf("upstream query unexpectedly includes review timeline: %s", query)
+	}
+}
+
+func TestSearchQueryIncludesReviewTimeline(t *testing.T) {
+	if !strings.Contains(searchQuery, "timelineItems(last:50") {
+		t.Fatalf("search query does not include review timeline: %s", searchQuery)
 	}
 }
 

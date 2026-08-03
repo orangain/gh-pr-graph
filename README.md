@@ -6,7 +6,7 @@
 
 As AI makes it easier to develop multiple changes in parallel, stacked pull requests are becoming larger and more common. A flat PR list hides which change depends on which. `gh pr-graph` follows base and head branches recursively and draws those relationships as a directed graph, making the review order, downstream work, and the path back to each repository immediately visible.
 
-Color-coded ownership and compact review, CI, conflict, and draft signals help you decide what needs action next. Merged PRs included in a change remain available in collapsible context, while automatic refresh keeps the workspace current. Everything runs locally through your authenticated `gh` CLI; GitHub credentials are never passed to the browser.
+Color-coded ownership and compact review, CI, conflict, and draft signals help you decide what needs action next. A re-review cue highlights fixes waiting on your next pass, so completed changes do not sit blocked on a quick follow-up. Merged PRs included in a change remain available in collapsible context, while automatic refresh keeps the workspace current. Everything runs locally through your authenticated `gh` CLI; GitHub credentials are never passed to the browser.
 
 ## Requirements
 
