@@ -187,7 +187,7 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 
 ## 5. Included PR の判定
 
-`GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。初回ロード中のprogress textには現在の処理phaseと、目安のpercentに代えて重複排除後に収集済みのPR数を表示する。progress barの長さは従来どおりpercentを使う。browserはPR一覧が確定した時点でprogressを65%のままgraphを先に描画し、親PR単位で`POST /api/v1/inspect`を呼ぶ。差分commit messageを最大300件まで走査して`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出し、全PRの候補数が確定した時点でgraphを更新してprogressを100%にする。この更新による多少のレイアウトシフトは許容する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとしてメモリキャッシュし、両SHAが同じなら再走査しない。リロード時は新しい候補数が確定するまで前回のIncluded PR候補と詳細を同じPR IDへ引き継ぎ、トグルが一時的に消えることを防ぐ。候補setが変わらなければ取得済みの詳細も維持する。
+`GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。初回ロード中のprogress textには現在の処理phaseと、目安のpercentに代えて重複排除後に収集済みのPR数を表示する。PR一覧が確定してgraphを描画した後は件数を外し、処理phaseだけを表示する。progress barの長さは従来どおりpercentを使う。browserはPR一覧が確定した時点でprogressを65%のままgraphを先に描画し、親PR単位で`POST /api/v1/inspect`を呼ぶ。差分commit messageを最大300件まで走査して`Merge pull request #123`や`Merged ... #123`からIncluded PR番号を抽出し、全PRの候補数が確定した時点でgraphを更新してprogressを100%にする。この更新による多少のレイアウトシフトは許容する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとしてメモリキャッシュし、両SHAが同じなら再走査しない。リロード時は新しい候補数が確定するまで前回のIncluded PR候補と詳細を同じPR IDへ引き継ぎ、トグルが一時的に消えることを防ぐ。候補setが変わらなければ取得済みの詳細も維持する。
 
 初期graph responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。browserは親PR IDごとに番号setと詳細をメモリキャッシュし、次回更新でsetが同じなら通信せずキャッシュを反映する。setが変わった親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。Included PR候補が1件以上あるノードだけにbranch iconを初期描画時から表示し、クリックでは一覧を開閉するだけで追加requestを発生させない。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 
