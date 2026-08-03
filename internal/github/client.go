@@ -193,16 +193,16 @@ func (c *Client) Load(ctx context.Context, options graph.SearchOptions) (graph.R
 	return c.LoadProgress(ctx, options, nil)
 }
 
-func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, progress func(current, total int, phase string)) (result graph.Result, resultErr error) {
+func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, progress func(current, total int, phase string, collected int)) (result graph.Result, resultErr error) {
 	ctx, loadSpan := c.startSpan(ctx, "load pull request graph", oteltrace.SpanInternal, oteltrace.Attributes{"pr.search_query": options.Query})
 	if loadSpan != nil {
 		defer func() {
 			loadSpan.End(resultErr, oteltrace.Attributes{"pr.node_count": len(result.Nodes), "pr.edge_count": len(result.Edges)})
 		}()
 	}
-	report := func(current, total int, phase string) {
+	report := func(current, total int, phase string, collected int) {
 		if progress != nil {
-			progress(current, total, phase)
+			progress(current, total, phase, collected)
 		}
 	}
 	queries := buildSearchSpecs(options)
@@ -210,7 +210,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 	reviewSeeds := map[string]bool{}
 	viewer := ""
 	warnings := []string{}
-	report(0, len(queries), "Searching pull requests")
+	report(0, len(queries), "Searching pull requests", 0)
 	searchCtx, searchSpan := c.startSpan(ctx, "search pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.query_count": len(queries)})
 	type searchResult struct {
 		spec     searchSpec
@@ -251,7 +251,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			pr.ReReviewRequested = isReReviewRequested(raw, viewer)
 			byID[pr.ID] = pr
 		}
-		report(completed+1, len(queries), "Searching pull requests")
+		report(completed+1, len(queries), "Searching pull requests", len(byID))
 	}
 	if searchSpan != nil {
 		searchSpan.End(nil, oteltrace.Attributes{"pr.result_count": len(byID)})
@@ -275,9 +275,9 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 	}
 	visitedRefs := map[string]bool{}
 	discovered := 0
-	report(0, len(frontier), "Discovering stacked pull requests")
+	report(0, len(frontier), "Discovering stacked pull requests", len(byID))
 	downstreamCtx, downstreamSpan := c.startSpan(ctx, "discover stacked pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(frontier)})
-	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests") }
+	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests", len(byID)) }
 	type downstreamJob struct {
 		item  item
 		owner string

@@ -19,9 +19,9 @@ type fakeLoader struct{ options graph.SearchOptions }
 
 type progressLoader struct{ fakeLoader }
 
-func (f *progressLoader) LoadProgress(_ context.Context, _ graph.SearchOptions, progress func(int, int, string)) (graph.Result, error) {
-	progress(1, 1, "Searching pull requests")
-	progress(1, 1, "Discovering stacked pull requests")
+func (f *progressLoader) LoadProgress(_ context.Context, _ graph.SearchOptions, progress func(int, int, string, int)) (graph.Result, error) {
+	progress(1, 1, "Searching pull requests", 1)
+	progress(1, 1, "Discovering stacked pull requests", 1)
 	return graph.Result{UpdatedAt: time.Unix(1, 0)}, nil
 }
 
@@ -108,7 +108,7 @@ func TestGraphStreamsProgressAndResult(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	s.graph(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil))
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"phase":"Inspecting pull request commits"`) || !strings.Contains(body, `"type":"result"`) {
+	if !strings.Contains(body, `"percent":65`) || !strings.Contains(body, `"phase":"Inspecting pull request commits"`) || !strings.Contains(body, `"collected":1`) || !strings.Contains(body, `"type":"result"`) {
 		t.Fatalf("unexpected stream: %s", body)
 	}
 	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {

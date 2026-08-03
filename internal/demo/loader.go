@@ -16,11 +16,7 @@ func (l *Loader) Load(ctx context.Context, options graph.SearchOptions) (graph.R
 	return l.LoadProgress(ctx, options, nil)
 }
 
-func (l *Loader) LoadProgress(_ context.Context, options graph.SearchOptions, progress func(int, int, string)) (graph.Result, error) {
-	if progress != nil {
-		progress(1, 1, "Searching pull requests")
-		progress(1, 1, "Discovering stacked pull requests")
-	}
+func (l *Loader) LoadProgress(_ context.Context, options graph.SearchOptions, progress func(int, int, string, int)) (graph.Result, error) {
 	all := pullRequests()
 	selected := map[string]bool{}
 	if options.Authored {
@@ -45,6 +41,10 @@ func (l *Loader) LoadProgress(_ context.Context, options graph.SearchOptions, pr
 			copy := *pr
 			prs = append(prs, &copy)
 		}
+	}
+	if progress != nil {
+		progress(1, 1, "Searching pull requests", len(prs))
+		progress(1, 1, "Discovering stacked pull requests", len(prs))
 	}
 	return graph.Build(prs, nil), nil
 }

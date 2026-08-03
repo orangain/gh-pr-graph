@@ -31,7 +31,7 @@ type Loader interface {
 }
 
 type progressiveLoader interface {
-	LoadProgress(context.Context, graph.SearchOptions, func(current, total int, phase string)) (graph.Result, error)
+	LoadProgress(context.Context, graph.SearchOptions, func(current, total int, phase string, collected int)) (graph.Result, error)
 }
 
 type includedLoader interface {
@@ -141,14 +141,14 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 	flusher, _ := w.(http.Flusher)
 	encoder := json.NewEncoder(w)
 	lastPercent := 0
-	report := func(current, total int, phase string) {
+	report := func(current, total int, phase string, collected int) {
 		percent := progressPercent(current, total, phase)
 		if percent < lastPercent {
 			percent = lastPercent
 		} else {
 			lastPercent = percent
 		}
-		_ = encoder.Encode(map[string]any{"type": "progress", "current": current, "total": total, "phase": phase, "percent": percent})
+		_ = encoder.Encode(map[string]any{"type": "progress", "current": current, "total": total, "phase": phase, "percent": percent, "collected": collected})
 		if flusher != nil {
 			flusher.Flush()
 		}
@@ -158,7 +158,13 @@ func (s *Server) graphStream(w http.ResponseWriter, r *http.Request, loader prog
 		_ = encoder.Encode(map[string]any{"type": "error", "error": err.Error()})
 		return err
 	}
-	_ = encoder.Encode(map[string]any{"type": "progress", "current": 0, "total": 1, "phase": "Inspecting pull request commits", "percent": 65})
+	collected := 0
+	for _, node := range result.Nodes {
+		if node.Kind == "pullRequest" {
+			collected++
+		}
+	}
+	_ = encoder.Encode(map[string]any{"type": "progress", "current": 0, "total": 1, "phase": "Inspecting pull request commits", "percent": 65, "collected": collected})
 	_ = encoder.Encode(map[string]any{"type": "result", "result": result})
 	return nil
 }
