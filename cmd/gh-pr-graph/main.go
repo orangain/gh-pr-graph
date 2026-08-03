@@ -38,6 +38,7 @@ func main() {
 	var loader server.Loader = client
 	if os.Getenv("GH_PR_GRAPH_DEMO") == "1" {
 		loader = demo.New()
+		fmt.Fprintln(os.Stderr, "gh pr-graph: GH_PR_GRAPH_DEMO enabled; using demo data")
 	}
 	var exporter *oteltrace.Exporter
 	if endpoint, enabled := os.LookupEnv("GH_PR_GRAPH_TRACE_OTEL"); enabled {
@@ -51,6 +52,7 @@ func main() {
 			os.Exit(2)
 		}
 		client.Tracer = exporter
+		fmt.Fprintf(os.Stderr, "gh pr-graph: GH_PR_GRAPH_TRACE_OTEL enabled; exporting traces to %s\n", exporter.Endpoint())
 	}
 	app := server.New(loader)
 	if exporter != nil {

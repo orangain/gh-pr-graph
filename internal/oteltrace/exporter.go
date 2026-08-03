@@ -70,6 +70,9 @@ func New(rawEndpoint string) (*Exporter, error) {
 	return e, nil
 }
 
+// Endpoint returns the normalized OTLP/HTTP traces endpoint used by the exporter.
+func (e *Exporter) Endpoint() string { return e.endpoint }
+
 func normalizeEndpoint(raw string) (string, error) {
 	if raw == "" || raw == "true" {
 		return DefaultEndpoint, nil

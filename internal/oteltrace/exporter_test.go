@@ -31,6 +31,21 @@ func TestNormalizeEndpoint(t *testing.T) {
 	}
 }
 
+func TestExporterEndpointReturnsNormalizedEndpoint(t *testing.T) {
+	exporter, err := New("http://localhost:4318")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := exporter.Endpoint(), "http://localhost:4318/v1/traces"; got != want {
+		t.Errorf("Endpoint() = %q, want %q", got, want)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := exporter.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestExporterPreservesParentChildRelationship(t *testing.T) {
 	received := make(chan map[string]any, 1)
 	exporter, err := New("http://collector.test")
