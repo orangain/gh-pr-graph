@@ -16,7 +16,6 @@
       <input id="search" type="search" aria-label="Additional GitHub PR search" placeholder="Add another OR query…">
       <button type="submit">Search</button>
     </form>
-    <label class="auto"><input id="hide-bots" type="checkbox"> Hide bots</label>
     <button id="refresh" type="button" title="Refresh now">↻</button>
     <label class="auto"><input id="auto" type="checkbox" checked> Auto-refresh</label>
     <span id="updated" aria-live="polite"></span>
@@ -25,6 +24,7 @@
     <div class="progress-bar"></div>
     <span>Loading pull requests…</span>
   </div>
+  <label class="graph-options" hidden><input id="show-bots" type="checkbox" checked> Show bots</label>
   <div id="warnings" role="status"></div>
   <main id="viewport">
     <div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="lanes"></div></div>
