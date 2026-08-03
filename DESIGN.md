@@ -58,7 +58,7 @@ is:open review-requested:@me
 
 ### ノード
 
-リポジトリノードは `owner/repo` と default branch を表示し、各リポジトリの最左列に固定する。
+リポジトリノードは `owner/repo` と default branch を表示し、各リポジトリの最左列に固定する。上流を辿ってもdefault branchへ到達しない場合は、そのbase branchを独立したブランチノードとして表示する。
 
 PR ノードには以下を表示する。
 
@@ -124,13 +124,14 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 ### ノードとエッジ
 
 - リポジトリノード: `owner/repo@defaultBranch`
+- ブランチノード: 上流の親PRがgraph内にないnon-default base branch。`(repository ID, ref name)`で一意化
 - PR ノード: GitHub GraphQL の global node ID で一意化
 - root edge: PR の `baseRefName == repository.defaultBranchRef.name`
 - stack edge: PR A の `headRefName` と PR B の `baseRefName` が一致し、head repository も一致するとき `A -> B`
 
 fork 由来ブランチの衝突を避けるため、ブランチの identity は単なる名前ではなく `(repository ID, ref name)` とする。
 
-baseがdefault branchではなく、同じbaseをheadに持つ親PRもgraph内にない場合は、repository nodeからPRへ破線edgeを引く。edgeには省略したbase branch名を表示し、hoverで完全な名前を確認できるようにする。
+baseがdefault branchではなく、同じbaseをheadに持つ親PRもgraph内にない場合は、repository nodeの右にbase branch nodeを作る。repository nodeからbranch nodeへ破線edgeを、branch nodeからそのbranchをbaseにするPRへ通常のedgeを引く。同じrepository・base branchを持つ複数PRは1つのbranch nodeを共有し、PRとその下流stackはbranch nodeの分だけ右へ配置する。
 
 同じ head branch を持つ複数 PR、削除済み branch、循環的に見える不正データは例外として扱う。edge の確度を `exact | inferred` で保持し、exact edge を優先する。循環を検出した場合は更新日時の古い inferred edge を切り、警告 badge を付ける。
 
@@ -341,7 +342,7 @@ docs/
 
 - gh extension scaffold、認証、ローカル server、browser open
 - 既定 3 検索と任意検索
-- repository / PR node、base/head による stack edge と下流 stack の再帰探索
+- repository / branch / PR node、base/head による stack edge と下流 stack の再帰探索
 - 番号、タイトル、author、assignee、reviewDecision の表示
 - 青 / シアン / 緑 / 灰の関与別背景、draft / ready の枠線、review / CI / conflict label
 - reviewer の承認数集約表示
@@ -373,14 +374,15 @@ docs/
 4. 表示対象 PR の head branch を base にする PR が、さらに右に接続される。
 5. 検索に直接一致しない後続 PR も、各 head branch を起点に再帰探索され、stack の末端または安全上限まで表示される。
 6. 検索に直接一致した PR の base branch を head にする親PRも再帰探索され、default branchまたは安全上限まで表示される。
-7. PR node から GitHub PR を開け、番号、タイトル、author、review、assign 状態を確認できる。
-8. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
-9. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
-10. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
-11. viewerのレビュー後に再度レビュー依頼されたPRは、カード右上の円形`sync` badgeで識別できる。
-12. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
-13. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
-14. GitHub token が frontend、ログ、disk cache に露出しない。
+7. 上流を辿ってもdefault branchへ到達しないPRはbase branch nodeへ接続され、そのbranch nodeとrepository nodeの間が破線で表示される。
+8. PR node から GitHub PR を開け、番号、タイトル、author、review、assign 状態を確認できる。
+9. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
+10. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
+11. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
+12. viewerのレビュー後に再度レビュー依頼されたPRは、カード右上の円形`sync` badgeで識別できる。
+13. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
+14. メイングラフ取得後、browserがcommit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で走査する。全候補番号が揃ってから描画し、その時点でprogress barを100%にして閉じる。候補数とトグルは初期描画から確定している。描画直後にPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
+15. GitHub token が frontend、ログ、disk cache に露出しない。
 
 ## 14. 先に固定する設計判断
 

@@ -47,11 +47,17 @@ type PullRequest struct {
 }
 
 type Node struct {
-	ID   string       `json:"id"`
-	Kind string       `json:"kind"`
-	Rank int          `json:"rank"`
-	Repo *Repository  `json:"repository,omitempty"`
-	PR   *PullRequest `json:"pullRequest,omitempty"`
+	ID     string       `json:"id"`
+	Kind   string       `json:"kind"`
+	Rank   int          `json:"rank"`
+	Repo   *Repository  `json:"repository,omitempty"`
+	Branch *Branch      `json:"branch,omitempty"`
+	PR     *PullRequest `json:"pullRequest,omitempty"`
+}
+
+type Branch struct {
+	RepositoryID string `json:"repositoryId"`
+	Name         string `json:"name"`
 }
 
 type Repository struct {

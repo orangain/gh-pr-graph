@@ -27,8 +27,15 @@ func Build(prs []*PullRequest, warnings []string) Result {
 	}
 
 	ranks := make(map[string]int, len(prs))
+	branches := make(map[string]*Branch)
 	for _, pr := range prs {
-		ranks[pr.ID] = 1
+		parents := head[refKey(pr.RepositoryID, pr.BaseRefName)]
+		if !hasDifferentPR(parents, pr.ID) && pr.BaseRefName != pr.DefaultBranch {
+			ranks[pr.ID] = 2
+			branches[refKey(pr.RepositoryID, pr.BaseRefName)] = &Branch{RepositoryID: pr.RepositoryID, Name: pr.BaseRefName}
+		} else {
+			ranks[pr.ID] = 1
+		}
 	}
 	for pass := 0; pass < len(prs); pass++ {
 		changed := false
@@ -55,6 +62,21 @@ func Build(prs []*PullRequest, warnings []string) Result {
 	for _, repo := range repoList {
 		result.Nodes = append(result.Nodes, Node{ID: "repo:" + repo.ID, Kind: "repository", Rank: 0, Repo: repo})
 	}
+	branchList := make([]*Branch, 0, len(branches))
+	for _, branch := range branches {
+		branchList = append(branchList, branch)
+	}
+	sort.Slice(branchList, func(i, j int) bool {
+		if branchList[i].RepositoryID != branchList[j].RepositoryID {
+			return branchList[i].RepositoryID < branchList[j].RepositoryID
+		}
+		return branchList[i].Name < branchList[j].Name
+	})
+	for _, branch := range branchList {
+		id := branchNodeID(branch.RepositoryID, branch.Name)
+		result.Nodes = append(result.Nodes, Node{ID: id, Kind: "branch", Rank: 1, Branch: branch})
+		result.Edges = append(result.Edges, Edge{ID: "root:" + id, Source: "repo:" + branch.RepositoryID, Target: id, Dashed: true})
+	}
 
 	sort.Slice(prs, func(i, j int) bool {
 		if ranks[prs[i].ID] != ranks[prs[j].ID] {
@@ -68,13 +90,13 @@ func Build(prs []*PullRequest, warnings []string) Result {
 	for _, pr := range prs {
 		result.Nodes = append(result.Nodes, Node{ID: "pr:" + pr.ID, Kind: "pullRequest", Rank: ranks[pr.ID], PR: pr})
 		parents := head[refKey(pr.RepositoryID, pr.BaseRefName)]
-		if len(parents) == 0 {
-			edge := Edge{ID: "root:" + pr.ID, Source: "repo:" + pr.RepositoryID, Target: "pr:" + pr.ID}
+		if !hasDifferentPR(parents, pr.ID) {
 			if pr.BaseRefName != pr.DefaultBranch {
-				edge.Label = pr.BaseRefName
-				edge.Dashed = true
+				branchID := branchNodeID(pr.RepositoryID, pr.BaseRefName)
+				result.Edges = append(result.Edges, Edge{ID: fmt.Sprintf("%s:%s", branchID, pr.ID), Source: branchID, Target: "pr:" + pr.ID})
+			} else {
+				result.Edges = append(result.Edges, Edge{ID: "root:" + pr.ID, Source: "repo:" + pr.RepositoryID, Target: "pr:" + pr.ID})
 			}
-			result.Edges = append(result.Edges, edge)
 		}
 		for _, parent := range parents {
 			if parent.ID != pr.ID {
@@ -86,3 +108,14 @@ func Build(prs []*PullRequest, warnings []string) Result {
 }
 
 func refKey(repoID, ref string) string { return repoID + "\x00" + ref }
+
+func branchNodeID(repoID, ref string) string { return "branch:" + repoID + ":" + ref }
+
+func hasDifferentPR(prs []*PullRequest, id string) bool {
+	for _, pr := range prs {
+		if pr.ID != id {
+			return true
+		}
+	}
+	return false
+}
