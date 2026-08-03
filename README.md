@@ -40,7 +40,6 @@ Options:
 --no-open          print the URL without opening a browser
 --port 8080        override the preferred local port (8787)
 --hostname HOST    use a GitHub Enterprise hostname
---trace-otel[=URL] send gh command traces via OTLP/HTTP
 ```
 
 ## Development
@@ -78,11 +77,11 @@ environment variable and does not appear as a command-line option.
 
 ### Inspect traces locally
 
-`--trace-otel` exports traces to `http://localhost:4318/v1/traces` by default.
-Use an explicit collector URL when needed, for example
-`--trace-otel http://localhost:4318` or `--trace-otel=http://localhost:4318`
-(the `/v1/traces` path is added when the
-URL has no path). The graph and Included PR API requests are root spans with
+Set `GH_PR_GRAPH_TRACE_OTEL=1` to export traces to
+`http://localhost:4318/v1/traces`. Set the variable to an explicit collector
+URL to use a different endpoint; the `/v1/traces` path is added when the URL
+has no path, for example `GH_PR_GRAPH_TRACE_OTEL=http://localhost:4318`.
+The graph and Included PR API requests are root spans with
 child spans for PR search, stacked PR discovery, commit inspection, and every
 `gh api graphql` command. Command spans include the executed arguments, exit
 code, duration, and error status. Trace delivery is asynchronous, batched, and
@@ -97,7 +96,7 @@ docker compose up -d
 Run the extension with tracing enabled, then load or refresh the PR graph:
 
 ```sh
-gh pr-graph --trace-otel
+GH_PR_GRAPH_TRACE_OTEL=1 gh pr-graph
 ```
 
 Open [http://localhost:16686](http://localhost:16686), select the
