@@ -95,7 +95,7 @@ func RelationFor(pr *PullRequest, viewer string, directlyReviewRequested bool) s
 	}
 	for _, assignee := range pr.Assignees {
 		if assignee.Login == viewer {
-			return "mine"
+			return "assigned"
 		}
 	}
 	if directlyReviewRequested {

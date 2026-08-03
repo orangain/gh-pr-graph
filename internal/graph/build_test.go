@@ -32,8 +32,22 @@ func TestBuildConnectsUnknownNonDefaultBaseToRepository(t *testing.T) {
 }
 
 func TestRelationPriority(t *testing.T) {
-	pr := &PullRequest{Author: User{Login: "me"}}
-	if got := RelationFor(pr, "me", true); got != "mine" {
-		t.Fatalf("got %q", got)
+	tests := []struct {
+		name     string
+		pr       *PullRequest
+		review   bool
+		relation string
+	}{
+		{name: "author takes priority", pr: &PullRequest{Author: User{Login: "me"}, Assignees: []User{{Login: "me"}}}, review: true, relation: "mine"},
+		{name: "assignee takes priority over review", pr: &PullRequest{Assignees: []User{{Login: "me"}}}, review: true, relation: "assigned"},
+		{name: "review requested", pr: &PullRequest{}, review: true, relation: "review-requested"},
+		{name: "other", pr: &PullRequest{}, relation: "other"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RelationFor(tt.pr, "me", tt.review); got != tt.relation {
+				t.Fatalf("got %q, want %q", got, tt.relation)
+			}
+		})
 	}
 }

@@ -25,7 +25,7 @@ func TestLoadProvidesScreenshotScenario(t *testing.T) {
 	if repos != 2 || prs != 5 {
 		t.Fatalf("repositories/PRs = %d/%d, want 2/5", repos, prs)
 	}
-	if relations["mine"] != 2 || relations["review-requested"] != 2 || relations["other"] != 1 {
+	if relations["mine"] != 1 || relations["assigned"] != 1 || relations["review-requested"] != 2 || relations["other"] != 1 {
 		t.Fatalf("relations = %+v", relations)
 	}
 }

@@ -78,11 +78,12 @@ PR ノードには以下を表示する。
 
 | 優先度 | 背景 | 意味 |
 |---:|---|---|
-| 1 | 青 | viewer が author、または viewer が assignee の PR（「自分の PR」） |
-| 2 | 緑 | viewer 個人または viewer が所属する team にレビュー依頼されている PR |
-| 3 | 灰 | 上記以外の検索結果や、stack を構成するため補完取得した PR |
+| 1 | 青 | viewer が author の PR（「自分の PR」） |
+| 2 | シアン | viewer が assignee の PR |
+| 3 | 緑 | viewer 個人または viewer が所属する team にレビュー依頼されている PR |
+| 4 | 灰 | 上記以外の検索結果や、stack を構成するため補完取得した PR |
 
-たとえば viewer が assignee かつ reviewer の場合は青を採用する。背景色には `My PR`、`Review requested`、`Other` の accessible label を対応させ、色だけに依存しない。dark mode と WCAG AA を考慮した CSS custom properties を使う。
+たとえば viewer が author かつ assignee の場合は青、assignee かつ reviewer の場合はシアンを採用する。背景色には `My PR`、`Assigned`、`Review requested`、`Other` の accessible label を対応させ、色だけに依存しない。dark mode と WCAG AA を考慮した CSS custom properties を使う。
 
 枠線は draft 状態を表す。ready for review の PR は太い実線、draft は細い実線とする。さらにタイトル先頭へPrimer Octiconsの`git-pull-request`または`git-pull-request-draft`を表示し、状態を統一した視覚表現で判別できるようにする。
 
@@ -143,7 +144,7 @@ baseがdefault branchではなく、同じbaseをheadに持つ親PRもgraph内�
                   └─ base: feature-a-2 の #129
 ```
 
-この例では #124 や #129 がまだ viewer へのレビュー依頼前で、元の検索条件に一致しなくても表示される。各補完 PR にも通常と同じ関与判定を行うため、viewer が author / assignee なら青、それ以外は灰色になる。
+この例では #124 や #129 がまだ viewer へのレビュー依頼前で、元の検索条件に一致しなくても表示される。各補完 PR にも通常と同じ関与判定を行うため、viewer が author なら青、assignee ならシアン、それ以外は灰色になる。
 
 探索規則は以下とする。
 
@@ -328,7 +329,7 @@ docs/
 - 既定 3 検索と任意検索
 - repository / PR node、base/head による stack edge と下流 stack の再帰探索
 - 番号、タイトル、author、assignee、reviewDecision の表示
-- 青 / 緑 / 灰の関与別背景、draft / ready の枠線、review / CI / conflict label
+- 青 / シアン / 緑 / 灰の関与別背景、draft / ready の枠線、review / CI / conflict label
 - reviewer の承認数集約表示
 - pan/zoom、手動 refresh、5 分ごとの自動 refresh、loading/error/empty state
 
@@ -358,7 +359,7 @@ docs/
 4. 表示対象 PR の head branch を base にする PR が、さらに右に接続される。
 5. 検索に直接一致しない後続 PR も、各 head branch を起点に再帰探索され、stack の末端または安全上限まで表示される。
 6. PR node から GitHub PR を開け、番号、タイトル、author、review、assign 状態を確認できる。
-7. author または assignee の PR は青、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
+7. author の PR は青、assignee の PR はシアン、レビュー依頼された PR は緑、その他は灰色の背景で表示される。複数該当時はこの順に優先する。
 8. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 9. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 10. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
