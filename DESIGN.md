@@ -59,7 +59,7 @@ is:open review-requested:@me
 
 ### ノード
 
-リポジトリノードは `owner/repo` と default branch を表示し、各リポジトリの最左列に固定する。上流を辿ってもdefault branchへ到達しない場合は、そのbase branchを独立したブランチノードとして表示する。
+リポジトリノードは `owner/repo` と default branch を表示し、各リポジトリの最左列に固定する。上流を辿ってもdefault branchへ到達しない場合は、そのbase branchを独立したブランチノードとして表示し、ブランチ名からGitHubのbranch pageを開けるようにする。
 
 PR ノードには以下を表示する。
 

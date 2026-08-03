@@ -58,6 +58,7 @@ type Node struct {
 type Branch struct {
 	RepositoryID string `json:"repositoryId"`
 	Name         string `json:"name"`
+	URL          string `json:"url,omitempty"`
 }
 
 type Repository struct {

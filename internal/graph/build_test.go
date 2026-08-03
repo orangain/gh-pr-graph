@@ -20,14 +20,17 @@ func TestBuildStack(t *testing.T) {
 }
 
 func TestBuildCreatesNodeForUnknownNonDefaultBase(t *testing.T) {
-	prs := []*PullRequest{{ID: "1", RepositoryID: "r", Repository: "o/r", DefaultBranch: "main", BaseRefName: "release/very-long-branch"}}
+	prs := []*PullRequest{{ID: "1", RepositoryID: "r", Repository: "o/r", RepositoryURL: "https://github.com/o/r", DefaultBranch: "main", BaseRefName: "release/very long-branch"}}
 	got := Build(prs, nil)
 	if len(got.Edges) != 2 {
 		t.Fatalf("edges = %d, want 2", len(got.Edges))
 	}
-	branchID := branchNodeID("r", "release/very-long-branch")
-	if got.Nodes[1].Kind != "branch" || got.Nodes[1].ID != branchID || got.Nodes[1].Branch.Name != "release/very-long-branch" {
+	branchID := branchNodeID("r", "release/very long-branch")
+	if got.Nodes[1].Kind != "branch" || got.Nodes[1].ID != branchID || got.Nodes[1].Branch.Name != "release/very long-branch" {
 		t.Fatalf("branch node = %+v", got.Nodes[1])
+	}
+	if got.Nodes[1].Branch.URL != "https://github.com/o/r/tree/release/very%20long-branch" {
+		t.Fatalf("branch URL = %q", got.Nodes[1].Branch.URL)
 	}
 	if got.Nodes[2].Rank != 2 {
 		t.Fatalf("PR rank = %d, want 2", got.Nodes[2].Rank)

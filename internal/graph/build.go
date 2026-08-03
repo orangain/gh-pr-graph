@@ -2,7 +2,9 @@ package graph
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -32,7 +34,15 @@ func Build(prs []*PullRequest, warnings []string) Result {
 		parents := head[refKey(pr.RepositoryID, pr.BaseRefName)]
 		if !hasDifferentPR(parents, pr.ID) && pr.BaseRefName != pr.DefaultBranch {
 			ranks[pr.ID] = 2
-			branches[refKey(pr.RepositoryID, pr.BaseRefName)] = &Branch{RepositoryID: pr.RepositoryID, Name: pr.BaseRefName}
+			key := refKey(pr.RepositoryID, pr.BaseRefName)
+			branch := branches[key]
+			if branch == nil {
+				branch = &Branch{RepositoryID: pr.RepositoryID, Name: pr.BaseRefName}
+				branches[key] = branch
+			}
+			if branch.URL == "" {
+				branch.URL = branchURL(pr.RepositoryURL, pr.BaseRefName)
+			}
 		} else {
 			ranks[pr.ID] = 1
 		}
@@ -110,6 +120,17 @@ func Build(prs []*PullRequest, warnings []string) Result {
 func refKey(repoID, ref string) string { return repoID + "\x00" + ref }
 
 func branchNodeID(repoID, ref string) string { return "branch:" + repoID + ":" + ref }
+
+func branchURL(repositoryURL, ref string) string {
+	if repositoryURL == "" || ref == "" {
+		return ""
+	}
+	parts := strings.Split(ref, "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	return strings.TrimRight(repositoryURL, "/") + "/tree/" + strings.Join(parts, "/")
+}
 
 func hasDifferentPR(prs []*PullRequest, id string) bool {
 	for _, pr := range prs {
