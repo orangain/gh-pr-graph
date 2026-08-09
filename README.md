@@ -48,6 +48,39 @@ Options:
 --hostname HOST    use a GitHub Enterprise hostname
 ```
 
+### Using the graph
+
+The Authored, Assigned, and Review requested filters are OR conditions. The
+search field adds a fourth OR condition using GitHub PR search syntax; clear
+all three filters to use only that query. `Show bots` is a local display filter
+and does not run the search again.
+
+The graph flows from a base on the left toward PRs stacked on it. A repository
+node represents its default branch. When a stack cannot be traced back to that
+branch, it starts at a branch node connected to the repository by a dashed
+edge.
+
+PR node backgrounds show why a PR is in your workspace:
+
+| PR node color | Meaning |
+| --- | --- |
+| Blue | Authored by you |
+| Cyan | Assigned to you |
+| Green | Your review is requested |
+| Gray | Related context discovered while following the stack |
+
+When a PR matches more than one category, authored takes precedence over
+assigned, which takes precedence over review requested. A thick border means
+the PR is ready for review; a thin border and the draft pull-request icon mean
+it is still a draft.
+
+`Reviews n/N approved` counts approvals against requested reviewers. The orange
+sync marker calls out a PR that was updated and sent back to you after your
+previous review.
+
+`Included PRs` are merged PRs detected in the containing PR's commit history,
+not separate graph nodes.
+
 ## Development
 
 Development requires Go 1.23 or newer.
