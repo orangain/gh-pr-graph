@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="internal/server/web/logo.svg" width="120" alt="gh pr-graph logo">
+</p>
+
 # gh pr-graph
 
 `gh pr-graph` turns the pull requests that need your attention into one visual workspace. Run one command to see every open PR you authored, were assigned to, or were asked to review—across repositories—without assembling filters or checking separate GitHub pages.
