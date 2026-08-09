@@ -4,6 +4,8 @@
 
 # gh pr-graph
 
+[![Latest release](https://img.shields.io/github/v/release/orangain/gh-pr-graph?label=release)](https://github.com/orangain/gh-pr-graph/releases/latest)
+
 `gh pr-graph` turns the pull requests that need your attention into one visual workspace. Run one command to see every open PR you authored, were assigned to, or were asked to review—across repositories—without assembling filters or checking separate GitHub pages.
 
 ![PR Graph showing related pull requests across repositories](docs/images/screenshot.png)
