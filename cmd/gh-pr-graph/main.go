@@ -15,6 +15,10 @@ import (
 	"github.com/orangain/gh-pr-graph/internal/server"
 )
 
+const projectURL = "https://github.com/orangain/gh-pr-graph"
+
+var version = "dev"
+
 func main() {
 	var port int
 	var noOpen bool
@@ -33,6 +37,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "gh pr-graph: unexpected arguments:", flag.Args())
 		os.Exit(2)
 	}
+	fmt.Printf("gh pr-graph %s\n%s\n", version, projectURL)
 
 	client := github.New(hostname)
 	var loader server.Loader = client
@@ -55,6 +60,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "gh pr-graph: GH_PR_GRAPH_TRACE_OTEL enabled; exporting traces to %s\n", exporter.Endpoint())
 	}
 	app := server.New(loader)
+	app.SetVersion(version)
 	if exporter != nil {
 		app.SetTracer(exporter)
 	}

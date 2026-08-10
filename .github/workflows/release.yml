@@ -18,5 +18,5 @@ jobs:
       - uses: cli/gh-extension-precompile@v2
         with:
           go_version_file: go.mod
-          go_build_options: ./cmd/gh-pr-graph
+          build_script_override: .github/build-release.sh
           generate_attestations: true

@@ -56,6 +56,19 @@ func TestGraphHandler(t *testing.T) {
 	}
 }
 
+func TestMetaReturnsConfiguredVersion(t *testing.T) {
+	s := New(&fakeLoader{})
+	s.SetVersion("v1.2.3")
+	recorder := httptest.NewRecorder()
+	s.meta(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := recorder.Body.String(); !strings.Contains(got, `"version":"v1.2.3"`) {
+		t.Errorf("body = %s", got)
+	}
+}
+
 func TestGraphHandlerReadsExplicitScopes(t *testing.T) {
 	loader := &fakeLoader{}
 	s := New(loader)

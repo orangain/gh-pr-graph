@@ -43,16 +43,23 @@ type inspectLoader interface {
 }
 
 type Server struct {
-	loader Loader
-	http   *http.Server
-	ln     net.Listener
-	mu     sync.Mutex
-	tracer oteltrace.Tracer
+	loader  Loader
+	http    *http.Server
+	ln      net.Listener
+	mu      sync.Mutex
+	tracer  oteltrace.Tracer
+	version string
 }
 
-func New(loader Loader) *Server { return &Server{loader: loader} }
+func New(loader Loader) *Server { return &Server{loader: loader, version: "dev"} }
 
 func (s *Server) SetTracer(tracer oteltrace.Tracer) { s.tracer = tracer }
+
+func (s *Server) SetVersion(version string) {
+	if version != "" {
+		s.version = version
+	}
+}
 
 func (s *Server) Start(port int) (string, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -65,6 +72,7 @@ func (s *Server) Start(port int) (string, error) {
 		return "", err
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/meta", s.meta)
 	mux.HandleFunc("GET /api/v1/graph", s.graph)
 	mux.HandleFunc("POST /api/v1/inspect", s.inspect)
 	mux.HandleFunc("POST /api/v1/included", s.included)
@@ -77,6 +85,12 @@ func (s *Server) Start(port int) (string, error) {
 		}
 	}()
 	return "http://" + ln.Addr().String(), nil
+}
+
+func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]string{"version": s.version})
 }
 
 func (s *Server) StartPreferred(port int) (string, error) {
