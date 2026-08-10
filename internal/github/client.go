@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -278,6 +279,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 	discovered := 0
 	report(0, len(frontier), "Discovering stacked pull requests", len(byID))
 	downstreamCtx, downstreamSpan := c.startSpan(ctx, "discover stacked pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(frontier)})
+	var downstreamErr error
 	reportDiscovery := func() { report(discovered, len(byID), "Discovering stacked pull requests", len(byID)) }
 	type downstreamJob struct {
 		item  item
@@ -314,8 +316,12 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		var response batchDownstreamResponse
 		if len(jobs) > 0 {
 			if err := c.graphql(downstreamCtx, "batch find downstream pull requests", query, nil, &response); err != nil {
+				if downstreamErr == nil {
+					downstreamErr = err
+				}
+				log.Printf("github: downstream discovery failed targets=%q: %v", downstreamTargetNames(targets), err)
 				for _, job := range jobs {
-					warnings = append(warnings, "Could not discover downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName)
+					warnings = append(warnings, "Could not discover downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName+". See console for details.")
 					reportDiscovery()
 				}
 				frontier = next
@@ -326,7 +332,11 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			job := jobs[index]
 			var repository *rawDownstreamRepository
 			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
-				warnings = append(warnings, "Could not decode downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName)
+				if downstreamErr == nil {
+					downstreamErr = err
+				}
+				log.Printf("github: downstream response decode failed target=%q alias=%q: %v", job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName, alias, err)
+				warnings = append(warnings, "Could not decode downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName+". See console for details.")
 				reportDiscovery()
 				continue
 			}
@@ -354,7 +364,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		frontier = next
 	}
 	if downstreamSpan != nil {
-		downstreamSpan.End(nil, oteltrace.Attributes{"pr.discovered_count": len(byID)})
+		downstreamSpan.End(downstreamErr, oteltrace.Attributes{"pr.discovered_count": len(byID)})
 	}
 
 	frontier = make([]item, 0, len(searchSeeds))
@@ -363,6 +373,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 	}
 	visitedUpstreamRefs := map[string]bool{}
 	upstreamCtx, upstreamSpan := c.startSpan(ctx, "discover upstream pull requests", oteltrace.SpanInternal, oteltrace.Attributes{"pr.seed_count": len(frontier)})
+	var upstreamErr error
 	type upstreamJob struct {
 		item  item
 		owner string
@@ -394,8 +405,12 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		var response batchDownstreamResponse
 		if len(jobs) > 0 {
 			if err := c.graphql(upstreamCtx, "batch find upstream pull requests", query, nil, &response); err != nil {
+				if upstreamErr == nil {
+					upstreamErr = err
+				}
+				log.Printf("github: upstream discovery failed targets=%q: %v", upstreamTargetNames(targets), err)
 				for _, job := range jobs {
-					warnings = append(warnings, "Could not discover upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName)
+					warnings = append(warnings, "Could not discover upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName+". See console for details.")
 				}
 				frontier = next
 				continue
@@ -405,7 +420,11 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			job := jobs[index]
 			var repository *rawDownstreamRepository
 			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
-				warnings = append(warnings, "Could not decode upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName)
+				if upstreamErr == nil {
+					upstreamErr = err
+				}
+				log.Printf("github: upstream response decode failed target=%q alias=%q: %v", job.item.pr.Repository+":"+job.item.pr.BaseRefName, alias, err)
+				warnings = append(warnings, "Could not decode upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName+". See console for details.")
 				continue
 			}
 			if repository == nil {
@@ -433,7 +452,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		frontier = next
 	}
 	if upstreamSpan != nil {
-		upstreamSpan.End(nil, oteltrace.Attributes{"pr.discovered_count": len(byID)})
+		upstreamSpan.End(upstreamErr, oteltrace.Attributes{"pr.discovered_count": len(byID)})
 	}
 	if len(byID) >= c.MaxPRs {
 		warnings = append(warnings, "PR limit reached; narrow the search to see the complete graph.")
@@ -443,6 +462,22 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 		prs = append(prs, pr)
 	}
 	return graph.Build(prs, warnings), nil
+}
+
+func downstreamTargetNames(targets []downstreamQueryTarget) string {
+	names := make([]string, 0, len(targets))
+	for _, target := range targets {
+		names = append(names, target.owner+"/"+target.name+":"+target.base)
+	}
+	return strings.Join(names, ", ")
+}
+
+func upstreamTargetNames(targets []upstreamQueryTarget) string {
+	names := make([]string, 0, len(targets))
+	for _, target := range targets {
+		names = append(names, target.owner+"/"+target.name+":"+target.head)
+	}
+	return strings.Join(names, ", ")
 }
 
 func buildDownstreamQuery(targets []downstreamQueryTarget) (string, map[string]int) {

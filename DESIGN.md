@@ -324,6 +324,7 @@ docs/
 - 同名 branch: repository ID を含めて判定
 - レビュー状態不明: 灰色。レビュー一覧から独自に required approval を推測しない
 - private repository: browser console、URL、永続 cache に内容を漏らさない
+- stacked PR の探索失敗: 画面には対象 branch と console の確認案内だけを表示し、起動元の console には探索方向、対象 repository/branch、`gh api graphql` のエラー詳細を記録する。OTEL が有効な場合は対応する探索 span も error とする
 
 ## 11. テスト戦略
 

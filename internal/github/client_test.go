@@ -78,6 +78,24 @@ func TestConvertReviewSummary(t *testing.T) {
 	}
 }
 
+func TestDiscoveryTargetNames(t *testing.T) {
+	downstream := downstreamTargetNames([]downstreamQueryTarget{
+		{owner: "orange", name: "alpha", base: "feature/one"},
+		{owner: "orange", name: "beta", base: "feature/two"},
+	})
+	if downstream != "orange/alpha:feature/one, orange/beta:feature/two" {
+		t.Fatalf("downstream targets = %q", downstream)
+	}
+
+	upstream := upstreamTargetNames([]upstreamQueryTarget{
+		{owner: "orange", name: "alpha", head: "feature/one"},
+		{owner: "orange", name: "beta", head: "feature/two"},
+	})
+	if upstream != "orange/alpha:feature/one, orange/beta:feature/two" {
+		t.Fatalf("upstream targets = %q", upstream)
+	}
+}
+
 func TestPRFieldsRequestPendingReviews(t *testing.T) {
 	if !strings.Contains(prFields, "pendingReviews:reviews(first:20,states:[PENDING])") {
 		t.Fatalf("PR fields do not request pending reviews: %s", prFields)
