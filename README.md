@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="internal/server/web/logo.svg" width="120" alt="gh pr-graph logo">
-</p>
-
-# gh pr-graph
+<h1>
+  <img src="internal/server/web/logo.svg" width="40" alt="" align="absmiddle">
+  gh pr-graph
+</h1>
 
 [![Latest release](https://img.shields.io/github/v/release/orangain/gh-pr-graph?label=release)](https://github.com/orangain/gh-pr-graph/releases/latest)
 
