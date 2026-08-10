@@ -18,7 +18,13 @@ import (
 	"github.com/orangain/gh-pr-graph/internal/oteltrace"
 )
 
-const maxConcurrentGitHubRequests = 6
+const (
+	maxConcurrentGitHubRequests = 6
+	// Each discovery target can return 100 pull requests, each with several
+	// nested connections. Keep enough headroom below GitHub's 500,000-node
+	// GraphQL validation limit.
+	maxDiscoveryTargetsPerQuery = 20
+)
 
 const searchQuery = `query($q:String!){
   viewer{login}
@@ -308,58 +314,59 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			jobs = append(jobs, downstreamJob{item: current, owner: parts[0], name: parts[1]})
 		}
 		next := []item{}
-		targets := make([]downstreamQueryTarget, len(jobs))
-		for i, job := range jobs {
-			targets[i] = downstreamQueryTarget{owner: job.owner, name: job.name, base: job.item.pr.HeadRefName}
-		}
-		query, indexesByAlias := buildDownstreamQuery(targets)
-		var response batchDownstreamResponse
-		if len(jobs) > 0 {
+		for _, bounds := range discoveryBatchBounds(len(jobs)) {
+			batchStart, batchEnd := bounds[0], bounds[1]
+			batchJobs := jobs[batchStart:batchEnd]
+			targets := make([]downstreamQueryTarget, len(batchJobs))
+			for i, job := range batchJobs {
+				targets[i] = downstreamQueryTarget{owner: job.owner, name: job.name, base: job.item.pr.HeadRefName}
+			}
+			query, indexesByAlias := buildDownstreamQuery(targets)
+			var response batchDownstreamResponse
 			if err := c.graphql(downstreamCtx, "batch find downstream pull requests", query, nil, &response); err != nil {
 				if downstreamErr == nil {
 					downstreamErr = err
 				}
 				log.Printf("github: downstream discovery failed targets=%q: %v", downstreamTargetNames(targets), err)
-				for _, job := range jobs {
+				for _, job := range batchJobs {
 					warnings = append(warnings, "Could not discover downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName+". See console for details.")
 					reportDiscovery()
 				}
-				frontier = next
 				continue
 			}
-		}
-		for alias, index := range indexesByAlias {
-			job := jobs[index]
-			var repository *rawDownstreamRepository
-			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
-				if downstreamErr == nil {
-					downstreamErr = err
+			for alias, index := range indexesByAlias {
+				job := batchJobs[index]
+				var repository *rawDownstreamRepository
+				if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
+					if downstreamErr == nil {
+						downstreamErr = err
+					}
+					log.Printf("github: downstream response decode failed target=%q alias=%q: %v", job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName, alias, err)
+					warnings = append(warnings, "Could not decode downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName+". See console for details.")
+					reportDiscovery()
+					continue
 				}
-				log.Printf("github: downstream response decode failed target=%q alias=%q: %v", job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName, alias, err)
-				warnings = append(warnings, "Could not decode downstream PRs for "+job.item.pr.HeadRepository+":"+job.item.pr.HeadRefName+". See console for details.")
+				if repository != nil {
+					for _, raw := range repository.PullRequests.Nodes {
+						if len(byID) >= c.MaxPRs {
+							break
+						}
+						pr := convert(raw, viewer)
+						if pr == nil {
+							continue
+						}
+						if _, exists := byID[pr.ID]; exists {
+							continue
+						}
+						pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+						pr.ReReviewRequested = isReReviewRequested(raw, viewer)
+						pr.Source = "downstream"
+						byID[pr.ID] = pr
+						next = append(next, item{pr, job.item.depth + 1})
+					}
+				}
 				reportDiscovery()
-				continue
 			}
-			if repository != nil {
-				for _, raw := range repository.PullRequests.Nodes {
-					if len(byID) >= c.MaxPRs {
-						break
-					}
-					pr := convert(raw, viewer)
-					if pr == nil {
-						continue
-					}
-					if _, exists := byID[pr.ID]; exists {
-						continue
-					}
-					pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
-					pr.ReReviewRequested = isReReviewRequested(raw, viewer)
-					pr.Source = "downstream"
-					byID[pr.ID] = pr
-					next = append(next, item{pr, job.item.depth + 1})
-				}
-			}
-			reportDiscovery()
 		}
 		frontier = next
 	}
@@ -397,56 +404,57 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			jobs = append(jobs, upstreamJob{item: current, owner: parts[0], name: parts[1]})
 		}
 		next := []item{}
-		targets := make([]upstreamQueryTarget, len(jobs))
-		for i, job := range jobs {
-			targets[i] = upstreamQueryTarget{owner: job.owner, name: job.name, head: job.item.pr.BaseRefName}
-		}
-		query, indexesByAlias := buildUpstreamQuery(targets)
-		var response batchDownstreamResponse
-		if len(jobs) > 0 {
+		for _, bounds := range discoveryBatchBounds(len(jobs)) {
+			batchStart, batchEnd := bounds[0], bounds[1]
+			batchJobs := jobs[batchStart:batchEnd]
+			targets := make([]upstreamQueryTarget, len(batchJobs))
+			for i, job := range batchJobs {
+				targets[i] = upstreamQueryTarget{owner: job.owner, name: job.name, head: job.item.pr.BaseRefName}
+			}
+			query, indexesByAlias := buildUpstreamQuery(targets)
+			var response batchDownstreamResponse
 			if err := c.graphql(upstreamCtx, "batch find upstream pull requests", query, nil, &response); err != nil {
 				if upstreamErr == nil {
 					upstreamErr = err
 				}
 				log.Printf("github: upstream discovery failed targets=%q: %v", upstreamTargetNames(targets), err)
-				for _, job := range jobs {
+				for _, job := range batchJobs {
 					warnings = append(warnings, "Could not discover upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName+". See console for details.")
 				}
-				frontier = next
 				continue
 			}
-		}
-		for alias, index := range indexesByAlias {
-			job := jobs[index]
-			var repository *rawDownstreamRepository
-			if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
-				if upstreamErr == nil {
-					upstreamErr = err
-				}
-				log.Printf("github: upstream response decode failed target=%q alias=%q: %v", job.item.pr.Repository+":"+job.item.pr.BaseRefName, alias, err)
-				warnings = append(warnings, "Could not decode upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName+". See console for details.")
-				continue
-			}
-			if repository == nil {
-				continue
-			}
-			for _, raw := range repository.PullRequests.Nodes {
-				if len(byID) >= c.MaxPRs {
-					break
-				}
-				pr := convert(raw, viewer)
-				if pr == nil || !isUpstreamParent(pr, job.item.pr) {
+			for alias, index := range indexesByAlias {
+				job := batchJobs[index]
+				var repository *rawDownstreamRepository
+				if err := json.Unmarshal(response.Data[alias], &repository); err != nil {
+					if upstreamErr == nil {
+						upstreamErr = err
+					}
+					log.Printf("github: upstream response decode failed target=%q alias=%q: %v", job.item.pr.Repository+":"+job.item.pr.BaseRefName, alias, err)
+					warnings = append(warnings, "Could not decode upstream PRs for "+job.item.pr.Repository+":"+job.item.pr.BaseRefName+". See console for details.")
 					continue
 				}
-				if existing, exists := byID[pr.ID]; exists {
-					next = append(next, item{pr: existing, depth: job.item.depth + 1})
+				if repository == nil {
 					continue
 				}
-				pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
-				pr.ReReviewRequested = isReReviewRequested(raw, viewer)
-				pr.Source = "upstream"
-				byID[pr.ID] = pr
-				next = append(next, item{pr: pr, depth: job.item.depth + 1})
+				for _, raw := range repository.PullRequests.Nodes {
+					if len(byID) >= c.MaxPRs {
+						break
+					}
+					pr := convert(raw, viewer)
+					if pr == nil || !isUpstreamParent(pr, job.item.pr) {
+						continue
+					}
+					if existing, exists := byID[pr.ID]; exists {
+						next = append(next, item{pr: existing, depth: job.item.depth + 1})
+						continue
+					}
+					pr.Relation = graph.RelationFor(pr, viewer, hasViewerRequest(raw, viewer))
+					pr.ReReviewRequested = isReReviewRequested(raw, viewer)
+					pr.Source = "upstream"
+					byID[pr.ID] = pr
+					next = append(next, item{pr: pr, depth: job.item.depth + 1})
+				}
 			}
 		}
 		frontier = next
@@ -478,6 +486,14 @@ func upstreamTargetNames(targets []upstreamQueryTarget) string {
 		names = append(names, target.owner+"/"+target.name+":"+target.head)
 	}
 	return strings.Join(names, ", ")
+}
+
+func discoveryBatchBounds(total int) [][2]int {
+	batches := make([][2]int, 0, (total+maxDiscoveryTargetsPerQuery-1)/maxDiscoveryTargetsPerQuery)
+	for start := 0; start < total; start += maxDiscoveryTargetsPerQuery {
+		batches = append(batches, [2]int{start, min(start+maxDiscoveryTargetsPerQuery, total)})
+	}
+	return batches
 }
 
 func buildDownstreamQuery(targets []downstreamQueryTarget) (string, map[string]int) {

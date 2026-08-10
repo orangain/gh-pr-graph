@@ -234,7 +234,7 @@ frontend に GitHub token を渡さない。すべての GitHub 通信を Go pro
 
 GraphQL `search(type: ISSUE)` で node ID の集合を取得し、PR fragment で表示項目を hydrate する。選択された関係条件と任意の第4検索条件をそれぞれ並列実行し、global node ID で重複排除する。
 
-hydrate 後、各 seed PR の `(repository ID, baseRefName)` から上流PRを、`(headRepository ID, headRefName)` から下流PRをbreadth-firstで再帰取得する。同じ深さのbranchはGraphQL aliasを使った1回のqueryへまとめ、branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数はbranch数ではなくstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | upstream | downstream` として保持する。
+hydrate 後、各 seed PR の `(repository ID, baseRefName)` から上流PRを、`(headRepository ID, headRefName)` から下流PRをbreadth-firstで再帰取得する。同じ深さのbranchはGraphQL aliasを使ってまとめるが、GitHub GraphQLの500,000 nodes上限に十分な余裕を持たせるため1 queryあたり20 branchまでとする。branch identityが重複する場合も問い合わせを1つにする。次の深さは直前の応答で判明するため、request数は概ねstackの深さに比例する。取得した PR は検索への直接一致か補完取得かを `source: search | upstream | downstream` として保持する。
 
 主な取得フィールド:
 

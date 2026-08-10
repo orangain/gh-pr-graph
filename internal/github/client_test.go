@@ -96,6 +96,22 @@ func TestDiscoveryTargetNames(t *testing.T) {
 	}
 }
 
+func TestDiscoveryBatchBoundsStaysBelowQueryTargetLimit(t *testing.T) {
+	got := discoveryBatchBounds(45)
+	want := [][2]int{{0, 20}, {20, 40}, {40, 45}}
+	if len(got) != len(want) {
+		t.Fatalf("batch count = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("batch %d = %v, want %v", i, got[i], want[i])
+		}
+		if got[i][1]-got[i][0] > maxDiscoveryTargetsPerQuery {
+			t.Fatalf("batch %d exceeds target limit: %v", i, got[i])
+		}
+	}
+}
+
 func TestPRFieldsRequestPendingReviews(t *testing.T) {
 	if !strings.Contains(prFields, "pendingReviews:reviews(first:20,states:[PENDING])") {
 		t.Fatalf("PR fields do not request pending reviews: %s", prFields)
