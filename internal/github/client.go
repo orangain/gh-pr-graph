@@ -49,6 +49,7 @@ const prFields = `
   assignees(first:20){nodes{login avatarUrl}}
   reviewRequests(first:50){nodes{requestedReviewer{__typename ... on User{login} ... on Team{slug}}}}
   latestReviews(first:50){nodes{state author{login}}}
+  viewerLatestReview{state}
   commits(last:1){nodes{commit{statusCheckRollup{state}}}}
 `
 
@@ -109,8 +110,9 @@ type rawPR struct {
 			Author *rawUser
 		}
 	}
-	TimelineItems struct{ Nodes []rawTimelineItem }
-	Commits       struct {
+	ViewerLatestReview *struct{ State string }
+	TimelineItems      struct{ Nodes []rawTimelineItem }
+	Commits            struct {
 		Nodes []struct {
 			Commit struct{ StatusCheckRollup *struct{ State string } }
 		}
@@ -731,6 +733,7 @@ func convert(raw rawPR) *graph.PullRequest {
 		return nil
 	}
 	pr := &graph.PullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, IsDraft: raw.IsDraft, UpdatedAt: raw.UpdatedAt, BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, BaseCommitSHA: raw.BaseRefOid, HeadCommitSHA: raw.HeadRefOid, ReviewDecision: raw.ReviewDecision, Mergeable: raw.Mergeable}
+	pr.ViewerPendingReview = raw.ViewerLatestReview != nil && raw.ViewerLatestReview.State == "PENDING"
 	if raw.Author != nil {
 		pr.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
 		pr.IsBot = raw.Author.Typename == "Bot" || strings.HasSuffix(strings.ToLower(raw.Author.Login), "[bot]")

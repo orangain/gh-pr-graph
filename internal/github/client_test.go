@@ -42,6 +42,7 @@ func TestIsReReviewRequested(t *testing.T) {
 
 func TestConvertReviewSummary(t *testing.T) {
 	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha", Author: &rawUser{Login: "dependabot[bot]", Typename: "Bot"}}
+	raw.ViewerLatestReview = &struct{ State string }{State: "PENDING"}
 	raw.LatestReviews.Nodes = append(raw.LatestReviews.Nodes,
 		struct {
 			State  string
@@ -71,6 +72,15 @@ func TestConvertReviewSummary(t *testing.T) {
 	}
 	if !got.IsBot {
 		t.Fatal("bot author was not detected")
+	}
+	if !got.ViewerPendingReview {
+		t.Fatal("viewer pending review was not detected")
+	}
+}
+
+func TestPRFieldsRequestViewerLatestReview(t *testing.T) {
+	if !strings.Contains(prFields, "viewerLatestReview{state}") {
+		t.Fatalf("PR fields do not request the viewer's latest review: %s", prFields)
 	}
 }
 

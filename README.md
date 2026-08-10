@@ -74,9 +74,10 @@ assigned, which takes precedence over review requested. A thick border means
 the PR is ready for review; a thin border and the draft pull-request icon mean
 it is still a draft.
 
-`Reviews n/N approved` counts approvals against requested reviewers. The orange
-sync marker calls out a PR that was updated and sent back to you after your
-previous review.
+`Reviews n/N approved` counts approvals against requested reviewers. The
+discussion marker means you have an unsubmitted review; it takes precedence
+over the orange sync marker for a PR updated and sent back after your previous
+review.
 
 `Included PRs` are merged PRs detected in the containing PR's commit history,
 not separate graph nodes.
