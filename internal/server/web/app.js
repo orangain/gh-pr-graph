@@ -120,5 +120,5 @@ lanes.addEventListener('click',async event=>{
  container.hidden=!container.hidden;button.setAttribute('aria-expanded',String(!container.hidden));button.querySelector('svg').outerHTML=chevronIcon(!container.hidden);relayout()
 });
 let drag=null;viewport.addEventListener('pointerdown',e=>{if(e.target.closest('a,button,input'))return;drag={x:e.clientX,y:e.clientY,l:viewport.scrollLeft,t:viewport.scrollTop};viewport.classList.add('dragging');viewport.setPointerCapture(e.pointerId)});viewport.addEventListener('pointermove',e=>{if(drag){viewport.scrollLeft=drag.l-(e.clientX-drag.x);viewport.scrollTop=drag.t-(e.clientY-drag.y)}});viewport.addEventListener('pointerup',()=>{drag=null;viewport.classList.remove('dragging')});
-fetch('/api/v1/meta').then(response=>response.ok?response.json():null).then(meta=>{if(!meta?.version)return;brand.dataset.version=`Version ${meta.version}`;brand.setAttribute('aria-label',`PR Graph ${meta.version} on GitHub`);document.title=`PR Graph ${meta.version}`}).catch(()=>{});
+fetch('/api/v1/meta').then(response=>response.ok?response.json():null).then(meta=>{if(!meta?.version)return;brand.dataset.version=`Version ${meta.version}`;brand.setAttribute('aria-label',`PR Graph ${meta.version} on GitHub`)}).catch(()=>{});
 load();
