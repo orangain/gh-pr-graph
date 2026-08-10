@@ -88,7 +88,7 @@ PR ノードには以下を表示する。
 
 枠線は draft 状態を表す。ready for review の PR は太い実線、draft は細い実線とする。さらにタイトル先頭へPrimer Octiconsの`git-pull-request`または`git-pull-request-draft`を表示し、状態を統一した視覚表現で判別できるようにする。
 
-`viewerLatestReview.state`が`PENDING`のPRは、viewerがreview commentをまだ投稿していない状態と判定する。カード右上の枠へ重なる円形badgeにPrimer Octicons `comment-discussion`を表示し、`Pending review — submit your comments`のtooltipとaccessible labelを付ける。
+`reviews(states:[PENDING])`にauthorがviewerのreviewがあるPRは、viewerがreview commentをまだ投稿していない状態と判定する。`viewerLatestReview`はこの未投稿reviewを返さないため判定には使わない。カード右上の枠へ重なる円形badgeにPrimer Octicons `comment-discussion`を表示し、`Pending review — submit your comments`のtooltipとaccessible labelを付ける。
 
 現在viewerへレビュー依頼されており、viewerの直近レビューより後に同じviewerへの`ReviewRequestedEvent`があるPRは再レビュー待ちと判定する。カード右上の枠へ重なるオレンジの円形badgeにPrimer Octicons `sync`を表示し、`Re-review requested`のtooltipとaccessible labelを付ける。pending reviewと再レビュー待ちが同時に成立する場合は、未投稿コメントを忘れるリスクを優先してpending review badgeだけを表示する。badgeは絶対配置してタイトル幅とカード寸法へ影響させない。背景色と枠線の意味は変更しない。timelineは検索結果について直近50件を取得し、上流・下流探索のbranch queryには含めない。上限外の古い履歴は再レビュー判定の対象外とする。
 

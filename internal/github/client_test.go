@@ -42,7 +42,7 @@ func TestIsReReviewRequested(t *testing.T) {
 
 func TestConvertReviewSummary(t *testing.T) {
 	raw := rawPR{ID: "pr1", HeadRefOid: "head-sha", BaseRefOid: "base-sha", Author: &rawUser{Login: "dependabot[bot]", Typename: "Bot"}}
-	raw.ViewerLatestReview = &struct{ State string }{State: "PENDING"}
+	raw.PendingReviews.Nodes = append(raw.PendingReviews.Nodes, struct{ Author *rawUser }{Author: &rawUser{Login: "viewer"}})
 	raw.LatestReviews.Nodes = append(raw.LatestReviews.Nodes,
 		struct {
 			State  string
@@ -63,7 +63,7 @@ func TestConvertReviewSummary(t *testing.T) {
 	raw.ReviewRequests.Nodes[0].RequestedReviewer.Typename = "User"
 	raw.ReviewRequests.Nodes[0].RequestedReviewer.Login = "carol"
 
-	got := convert(raw)
+	got := convert(raw, "viewer")
 	if got.ReviewApproved != 1 || got.ReviewTotal != 3 {
 		t.Fatalf("review summary = %d/%d, want 1/3", got.ReviewApproved, got.ReviewTotal)
 	}
@@ -78,9 +78,9 @@ func TestConvertReviewSummary(t *testing.T) {
 	}
 }
 
-func TestPRFieldsRequestViewerLatestReview(t *testing.T) {
-	if !strings.Contains(prFields, "viewerLatestReview{state}") {
-		t.Fatalf("PR fields do not request the viewer's latest review: %s", prFields)
+func TestPRFieldsRequestPendingReviews(t *testing.T) {
+	if !strings.Contains(prFields, "pendingReviews:reviews(first:20,states:[PENDING])") {
+		t.Fatalf("PR fields do not request pending reviews: %s", prFields)
 	}
 }
 

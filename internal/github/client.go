@@ -49,7 +49,7 @@ const prFields = `
   assignees(first:20){nodes{login avatarUrl}}
   reviewRequests(first:50){nodes{requestedReviewer{__typename ... on User{login} ... on Team{slug}}}}
   latestReviews(first:50){nodes{state author{login}}}
-  viewerLatestReview{state}
+  pendingReviews:reviews(first:20,states:[PENDING]){nodes{author{login}}}
   commits(last:1){nodes{commit{statusCheckRollup{state}}}}
 `
 
@@ -110,9 +110,9 @@ type rawPR struct {
 			Author *rawUser
 		}
 	}
-	ViewerLatestReview *struct{ State string }
-	TimelineItems      struct{ Nodes []rawTimelineItem }
-	Commits            struct {
+	PendingReviews struct{ Nodes []struct{ Author *rawUser } }
+	TimelineItems  struct{ Nodes []rawTimelineItem }
+	Commits        struct {
 		Nodes []struct {
 			Commit struct{ StatusCheckRollup *struct{ State string } }
 		}
@@ -242,7 +242,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 			warnings = append(warnings, fmt.Sprintf("Search %q has more than 100 results; showing the first 100.", spec.query))
 		}
 		for _, raw := range response.Data.Search.Nodes {
-			pr := convert(raw)
+			pr := convert(raw, viewer)
 			if pr == nil {
 				continue
 			}
@@ -335,7 +335,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 					if len(byID) >= c.MaxPRs {
 						break
 					}
-					pr := convert(raw)
+					pr := convert(raw, viewer)
 					if pr == nil {
 						continue
 					}
@@ -415,7 +415,7 @@ func (c *Client) LoadProgress(ctx context.Context, options graph.SearchOptions, 
 				if len(byID) >= c.MaxPRs {
 					break
 				}
-				pr := convert(raw)
+				pr := convert(raw, viewer)
 				if pr == nil || !isUpstreamParent(pr, job.item.pr) {
 					continue
 				}
@@ -728,12 +728,17 @@ func mergedPRNumbers(message string, currentPR int) []int {
 	return numbers
 }
 
-func convert(raw rawPR) *graph.PullRequest {
+func convert(raw rawPR, viewer string) *graph.PullRequest {
 	if raw.ID == "" {
 		return nil
 	}
 	pr := &graph.PullRequest{ID: raw.ID, Number: raw.Number, Title: raw.Title, URL: raw.URL, IsDraft: raw.IsDraft, UpdatedAt: raw.UpdatedAt, BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, BaseCommitSHA: raw.BaseRefOid, HeadCommitSHA: raw.HeadRefOid, ReviewDecision: raw.ReviewDecision, Mergeable: raw.Mergeable}
-	pr.ViewerPendingReview = raw.ViewerLatestReview != nil && raw.ViewerLatestReview.State == "PENDING"
+	for _, review := range raw.PendingReviews.Nodes {
+		if review.Author != nil && review.Author.Login == viewer {
+			pr.ViewerPendingReview = true
+			break
+		}
+	}
 	if raw.Author != nil {
 		pr.Author = graph.User{Login: raw.Author.Login, AvatarURL: raw.Author.AvatarURL}
 		pr.IsBot = raw.Author.Typename == "Bot" || strings.HasSuffix(strings.ToLower(raw.Author.Login), "[bot]")
