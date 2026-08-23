@@ -11,14 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Back off automatic refreshes after failures instead of retrying every five minutes.
-  Reported by [@syamichin](https://github.com/syamichin) in
-  [#4](https://github.com/orangain/gh-pr-graph/issues/4) and fixed in
-  [#6](https://github.com/orangain/gh-pr-graph/pull/6).
-- Return empty arrays instead of `null` when no pull requests match a search.
-  Reported by [@syamichin](https://github.com/syamichin) in
-  [#3](https://github.com/orangain/gh-pr-graph/issues/3) and fixed in
-  [#5](https://github.com/orangain/gh-pr-graph/pull/5).
+- Back off automatic refreshes after failures instead of retrying every five minutes. Reported by [@syamichin](https://github.com/syamichin) in [#4](https://github.com/orangain/gh-pr-graph/issues/4) and fixed in [#6](https://github.com/orangain/gh-pr-graph/pull/6).
+- Return empty arrays instead of `null` when no pull requests match a search. Reported by [@syamichin](https://github.com/syamichin) in [#3](https://github.com/orangain/gh-pr-graph/issues/3) and fixed in [#5](https://github.com/orangain/gh-pr-graph/pull/5).
 
 ## [0.14.5] - 2026-08-14
 
