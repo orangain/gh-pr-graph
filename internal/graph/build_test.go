@@ -1,6 +1,31 @@
 package graph
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestBuildEmptyGraphMarshalsCollectionsAsArrays(t *testing.T) {
+	got := Build(nil, []string{})
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) == "" {
+		t.Fatal("empty JSON response")
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &body); err != nil {
+		t.Fatal(err)
+	}
+	if string(body["nodes"]) != "[]" {
+		t.Errorf("nodes = %s, want []", body["nodes"])
+	}
+	if string(body["edges"]) != "[]" {
+		t.Errorf("edges = %s, want []", body["edges"])
+	}
+}
 
 func TestBuildStack(t *testing.T) {
 	prs := []*PullRequest{
