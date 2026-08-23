@@ -111,7 +111,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 - 初回取得中だけheader直下にprogress barと`Loading pull requests…`を表示する。初回表示後の自動・手動更新では、progress領域の出現によるviewportの縦ずれを避けるため表示しない。
 - browser tab が非表示または端末が offline の間は polling を止め、再表示／online 復帰時に前回更新から 5 分以上経っていれば即座に更新する。
 - 更新中も現在のgraphをそのまま残し、成功後にnode/edgeの差分を反映してviewportを維持する。
-- 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は exponential backoff とし、手動更新は常に可能にする。
+- 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は30秒から始め、連続失敗ごとに60秒、120秒、240秒と倍増して最大5分で頭打ちにする。成功時に失敗回数をリセットし、手動更新はbackoff中も常に可能にする。tab再表示やonline復帰でも未経過のbackoffを飛ばさない。
 - 検索条件が変更された場合は polling timer をリセットする。同じ query に対する同時リクエストは 1 件にまとめる。
 
 ### 折りたたみ
