@@ -153,14 +153,9 @@ docker compose down
 
 CI runs tests, vet, JavaScript syntax checking, release-note extraction tests, and a build on pushes to `main` and pull requests. User-facing changes are recorded under `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 
-To publish a version, move the `Unreleased` entries into a dated version section, update the comparison links at the bottom of the changelog, and commit the result. Then push an annotated semantic version tag matching that section:
+To publish a version, create a `release/vX.Y.Z` branch and pull request that moves the `Unreleased` entries into a dated version section and updates the comparison links at the bottom of the changelog. Have a human review and merge that pull request into `main`. The merge automatically creates the matching annotated tag and publishes the GitHub Release; do not create the release tag before the pull request is merged.
 
-```sh
-git tag -a v0.1.0 -m "gh-pr-graph 0.1.0"
-git push origin v0.1.0
-```
-
-The release workflow verifies and extracts the matching changelog section, cross-compiles supported binaries, creates the GitHub Release, publishes the extracted notes, uploads correctly named assets, and generates build provenance attestations. A missing or empty version section fails the release. The workflow needs the repository's default `GITHUB_TOKEN` with the permissions declared in the workflow; no additional secret is required.
+The release workflow only accepts merged internal release pull requests; pushing a version tag manually does not publish a release. It verifies and extracts the matching changelog section, creates the annotated tag on the merge commit, cross-compiles supported binaries, creates the GitHub Release, publishes the extracted notes, uploads correctly named assets, and generates build provenance attestations. A malformed release branch name or missing or empty version section fails the release. The workflow needs the repository's default `GITHUB_TOKEN` with the permissions declared in the workflow; no additional secret is required.
 
 For discoverability, set the repository topic `gh-extension` after publishing it.
 

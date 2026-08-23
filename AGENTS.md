@@ -56,6 +56,8 @@ GOCACHE=/tmp/gh-pr-graph-go-cache go vet ./...
 - `git push`
 - `git tag`
 - `gh release view`
+- `gh pr create`
+- `gh pr view`
 - `gh run list`
 - `gh run view`
 - `gh run watch`
@@ -66,7 +68,11 @@ GOCACHE=/tmp/gh-pr-graph-go-cache go vet ./...
 
 - ユーザーが1.0リリースを明示的に認めるまで、バージョンを `1.0.0` 以上にしない。
 - 変更内容から次のSemantic Versioningを決める。不具合修正、ドキュメント、小さな見た目の改善はpatch、新しいユーザー向け機能や意味のある振る舞いの変更はminorとする。
+- `CHANGELOG.md`の各項目はGitHub Release上で不自然に改行されないよう1項目を物理的な1行で書く。対応Issueがあれば報告者とIssueを、対応PRがあればPRをリンクする。PR authorがrepository ownerでない場合はauthorも記載し、ownerの場合は省略する。
+- 明示的にリリースを依頼されたら、最初にワークツリー、最新リリース、`Unreleased`の内容を確認して対象versionを決める。`Unreleased`の項目を日付付きversion sectionへ移し、比較linkを更新する変更は、`main`へ直接commitせず、リリース準備専用branchのcommitとしてpushし、PRを作成する。
+- リリース準備branchは必ず`release/vX.Y.Z`とし、PRのbaseは`main`にする。PR本文には対象version、変更概要、検証結果を記載する。PR作成後はURLを報告し、人間が内容を確認してmergeするまで、agent自身はtag作成、tagのpush、GitHub Releaseの作成を行わない。
+- リリース準備PRがmergeされると、Release workflowがmerge commitへannotated tagを作成し、同じrun内でGitHub Releaseを自動公開する。最初のリリース依頼は、この自動処理を含む一連のリリースを許可するものとし、merge後に追加指示を要求しない。agentがmerge後も実行中なら、通常CIとRelease workflowを監視し、公開状態を確認する。
 - `vX.Y.Z` 形式のannotated tagを使い、メッセージは `gh-pr-graph X.Y.Z` とする。
-- 明示的にリリースを依頼されたら、ワークツリーと最新リリースを確認し、`main` をpushしてからタグを作成・pushし、CIとRelease Actionsの両方が完了するまで監視する。
+- release tagの作成とpushはRelease workflowだけが行う。手動でtagをpushしてもreleaseは開始されない。agentはrelease tagを作成・pushせず、一度作成されたrelease tagも付け替えない。
 - GitHub Releaseがdraftやprereleaseではなく公開済みであることを確認し、リンクとともに報告する。`main` が `origin/main` と同期していることも確認する。
 - CIまたはリリースが失敗した場合は、成功したと報告せず、失敗ログを確認して依頼の範囲内で修正する。

@@ -315,7 +315,7 @@ docs/
 
 実行ファイル名は gh extension の規約に合わせて `gh-pr-graph` とする。release artifact は主要 OS/architecture 向けに生成し、extension repository の release から `gh extension install OWNER/gh-pr-graph` で導入できる形にする。
 
-利用者に影響する変更は`CHANGELOG.md`の`Unreleased`へ蓄積する。リリース時はその内容を日付付きversion sectionへ移し、同じversionのannotated tagを作成する。Release workflowはtagに対応するsectionが存在し内容が空でないことを検証し、その本文をGitHub Release notesとして公開する。commit一覧の自動生成は正本とせず、内部変更やmerge commitを利用者向け変更と混在させない。
+利用者に影響する変更は`CHANGELOG.md`の`Unreleased`へ蓄積する。リリース時はその内容を日付付きversion sectionへ移し、比較linkを更新する`release/vX.Y.Z` branchの専用PRを先に作成する。人間が内容とversionを確認して`main`へmergeすると、Release workflowがmerge commitへ同じversionのannotated tagを作成し、そのrun内でGitHub Releaseを自動公開する。tagのpush自体はreleaseのtriggerにせず、tag作成とrelease処理はこのmerge起点のrunだけで行う。一度作成したrelease tagは付け替えない。Release workflowはtagに対応するsectionが存在し内容が空でないことを検証し、その本文をGitHub Release notesとして公開する。commit一覧の自動生成は正本とせず、内部変更やmerge commitを利用者向け変更と混在させない。各項目はRelease画面で不要な改行が入らないよう物理的な1行とし、対応Issueの報告者とIssue、対応PRをlinkする。PR authorはrepository ownerでない場合だけ明記する。
 
 ## 10. エラーと edge case
 
