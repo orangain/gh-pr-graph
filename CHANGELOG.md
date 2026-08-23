@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-08-23
+
 ### Fixed
 
 - Back off automatic refreshes after failures instead of retrying every five minutes.
@@ -18,5 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified the colors of the pending-review and re-review attention icons.
 
-[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.14.5...HEAD
+[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.14.6...HEAD
+[0.14.6]: https://github.com/orangain/gh-pr-graph/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/orangain/gh-pr-graph/compare/v0.14.4...v0.14.5
