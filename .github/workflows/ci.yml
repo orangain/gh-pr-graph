@@ -22,6 +22,8 @@ jobs:
           node-version: 22
       - name: Check JavaScript
         run: node --check internal/server/web/app.js
+      - name: Test release notes
+        run: bash .github/release-notes_test.sh
       - name: Test
         run: go test ./...
       - name: Vet

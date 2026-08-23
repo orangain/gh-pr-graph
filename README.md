@@ -151,14 +151,16 @@ docker compose down
 
 ## Releasing
 
-CI runs tests, vet, JavaScript syntax checking, and a build on pushes to `main` and pull requests. To publish a version, push a semantic version tag:
+CI runs tests, vet, JavaScript syntax checking, release-note extraction tests, and a build on pushes to `main` and pull requests. User-facing changes are recorded under `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
+
+To publish a version, move the `Unreleased` entries into a dated version section, update the comparison links at the bottom of the changelog, and commit the result. Then push an annotated semantic version tag matching that section:
 
 ```sh
-git tag v0.1.0
+git tag -a v0.1.0 -m "gh-pr-graph 0.1.0"
 git push origin v0.1.0
 ```
 
-The release workflow cross-compiles supported binaries, creates the GitHub Release, uploads correctly named assets, and generates build provenance attestations. The workflow needs the repository's default `GITHUB_TOKEN` with the permissions declared in the workflow; no additional secret is required.
+The release workflow verifies and extracts the matching changelog section, cross-compiles supported binaries, creates the GitHub Release, publishes the extracted notes, uploads correctly named assets, and generates build provenance attestations. A missing or empty version section fails the release. The workflow needs the repository's default `GITHUB_TOKEN` with the permissions declared in the workflow; no additional secret is required.
 
 For discoverability, set the repository topic `gh-extension` after publishing it.
 

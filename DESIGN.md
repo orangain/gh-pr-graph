@@ -315,6 +315,8 @@ docs/
 
 実行ファイル名は gh extension の規約に合わせて `gh-pr-graph` とする。release artifact は主要 OS/architecture 向けに生成し、extension repository の release から `gh extension install OWNER/gh-pr-graph` で導入できる形にする。
 
+利用者に影響する変更は`CHANGELOG.md`の`Unreleased`へ蓄積する。リリース時はその内容を日付付きversion sectionへ移し、同じversionのannotated tagを作成する。Release workflowはtagに対応するsectionが存在し内容が空でないことを検証し、その本文をGitHub Release notesとして公開する。commit一覧の自動生成は正本とせず、内部変更やmerge commitを利用者向け変更と混在させない。
+
 ## 10. エラーと edge case
 
 - 未認証: `gh auth login` を案内して終了
@@ -338,7 +340,7 @@ docs/
 - frontend: component test、keyboard navigation、色以外の状態表現
 - auto refresh: fake timer による 5 分間隔、tab visibility、offline、失敗時 backoff、UI state 維持のテスト
 - E2E: mock GitHub API を使い、起動から検索、展開、リンクまで Playwright で検証
-- release: Linux/macOS/Windows の smoke test と `gh extension install` 検証
+- release: changelog section抽出、Linux/macOS/Windows の smoke test と `gh extension install` 検証
 
 実リポジトリへアクセスするテストは opt-in にし、通常 CI では token を必要としない。
 
