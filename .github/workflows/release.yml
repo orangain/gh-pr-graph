@@ -15,8 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Prepare release notes
+        run: bash .github/release-notes.sh "${GITHUB_REF_NAME#v}" > release-notes.md
       - uses: cli/gh-extension-precompile@v2
         with:
           go_version_file: go.mod
           build_script_override: .github/build-release.sh
           generate_attestations: true
+      - name: Publish release notes
+        run: gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
