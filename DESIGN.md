@@ -122,7 +122,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 - 初回取得中だけheader直下にprogress barと`Loading pull requests…`を表示する。初回表示後の自動・手動更新では、progress領域の出現によるviewportの縦ずれを避けるため表示しない。
 - browser tab が非表示または端末が offline の間は polling を止め、再表示／online 復帰時に前回更新から 5 分以上経っていれば即座に更新する。
 - 更新中も現在のgraphをそのまま残し、成功後にnode/edgeの差分を反映してviewportを維持する。
-- 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は exponential backoff とし、手動更新は常に可能にする。
+- 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は30秒から始め、連続失敗ごとに60秒、120秒、240秒と倍増して最大5分で頭打ちにする。成功時に失敗回数をリセットし、手動更新はbackoff中も常に可能にする。tab再表示やonline復帰でも未経過のbackoffを飛ばさない。
 - 検索条件が変更された場合は polling timer をリセットする。同じ query に対する同時リクエストは 1 件にまとめる。
 
 ### 折りたたみ
@@ -201,6 +201,8 @@ GitHub API の暴走と巨大 graph を防ぐため、初期上限を seed を�
 ## 5. Included PR の判定
 
 `GET /api/v1/graph`はIncluded PR未判定のメイングラフと各PRのhead commit SHA、base先端SHAを返す。初回ロード中のprogress textには現在の処理phaseと、目安のpercentに代えて重複排除後に収集済みのPR数を表示する。PR一覧が確定してgraphを描画した後は件数を外し、処理phaseだけを表示する。progress barの長さは従来どおりpercentを使う。browserはPR一覧が確定した時点でprogressを65%のままgraphを先に描画し、親PR単位で`POST /api/v1/inspect`を呼ぶ。commit inspectionは`commits(last:100)`の1requestだけを使い、最新commitから古いcommitの順に`Merge pull request #123`や`Merged ... #123`を走査してIncluded PR番号を重複排除する。`hasPreviousPage`がtrueでもpaginationせず、検出数を下限として扱う。全PRの候補数が確定した時点でgraphを更新してprogressを100%にする。この更新による多少のレイアウトシフトは許容する。検査結果は親PR IDごとに`(head commit SHA, base先端SHA)`をversionとして、順序付き候補番号とtruncated状態をメモリキャッシュし、両SHAが同じなら再走査しない。リロード時は新しい候補数が確定するまで前回のIncluded PR候補と詳細を同じPR IDへ引き継ぎ、トグルが一時的に消えることを防ぐ。候補setとtruncated状態が変わらなければ取得済みの詳細も維持する。
+
+検索に一致するPRがない場合も、`GET /api/v1/graph`の`nodes`と`edges`は`null`ではなく空配列を返す。browserはこの応答を正常な空グラフとして扱い、`No pull requests found`を表示する。
 
 commit inspection responseには番号だけのIncluded PR候補を含め、browserの初期描画完了後に`POST /api/v1/included`を包含する親PR単位で自動実行して詳細を反映する。タイトル、URL、作者などの詳細は順序付き候補の先頭3件と末尾3件だけ取得し、候補が6件以下なら全件取得する。中間候補は`… N more found`のクリック後に番号リンクだけを表示し、追加requestを発生させない。truncatedの場合は検出済み候補の末尾に`and more…`を表示する。browserは親PR IDごとに順序付き番号とtruncated状態をsignatureとして詳細をメモリキャッシュし、次回更新でsignatureが同じなら通信せずキャッシュを反映する。変化した親PRだけを最大6並列で問い合わせ、完了した結果から画面へ反映する。標準的なmerge commit messageを残さないsquash/rebase mergeは検出対象外とする。
 

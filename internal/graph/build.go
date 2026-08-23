@@ -9,7 +9,12 @@ import (
 )
 
 func Build(prs []*PullRequest, warnings []string) Result {
-	result := Result{Warnings: warnings, UpdatedAt: time.Now().UTC()}
+	result := Result{
+		Nodes:     make([]Node, 0, len(prs)),
+		Edges:     make([]Edge, 0, len(prs)),
+		Warnings:  warnings,
+		UpdatedAt: time.Now().UTC(),
+	}
 	byID := make(map[string]*PullRequest, len(prs))
 	head := make(map[string][]*PullRequest)
 	repos := make(map[string]*Repository)
