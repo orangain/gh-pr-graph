@@ -1,9 +1,11 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
 
 permissions:
   contents: write
@@ -12,11 +14,49 @@ permissions:
 
 jobs:
   release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: Determine release version
+        id: release
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          tag="${HEAD_REF#release/}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - name: Prepare release notes
+        run: bash .github/release-notes.sh "${{ steps.release.outputs.version }}" > release-notes.md
+      - name: Create release tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists: $TAG" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "gh-pr-graph ${TAG#v}"
+          git push origin "$TAG"
       - uses: cli/gh-extension-precompile@v2
         with:
           go_version_file: go.mod
           build_script_override: .github/build-release.sh
           generate_attestations: true
+          release_tag: ${{ steps.release.outputs.tag }}
+      - name: Publish release notes
+        run: gh release edit "${{ steps.release.outputs.tag }}" --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

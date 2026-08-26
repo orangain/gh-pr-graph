@@ -26,6 +26,8 @@ jobs:
           node --check internal/server/web/clipboard.js
       - name: Test JavaScript
         run: node --test internal/server/webtest/refresh_test.js internal/server/webtest/clipboard_test.js
+      - name: Test release notes
+        run: bash .github/release-notes_test.sh
       - name: Test
         run: go test ./...
       - name: Vet
