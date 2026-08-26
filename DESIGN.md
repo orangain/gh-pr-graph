@@ -70,17 +70,15 @@ PR ノードには以下を表示する。
 - review decision、CI、conflict を表す icon と短い label
 - CI の集約状態、merge conflict（取得可能な場合）
 - 最終更新時刻
-- タイトルと PR URL を Markdown リンクとしてコピーする copy ボタン
+- タイトルと PR URL を単一のプレーンテキストとしてコピーする copy ボタン
 
 タイトルは GitHub の PR URL を新しいタブで開く。ノード全体はキーボードで focus 可能とし、Enter でも詳細を開ける。
 
 タイトル行の末尾にPrimer Octicons `copy` のボタンを置き、クリックでタイトルとPR URLをクリップボードへ書き込む。レビュー依頼や作業メモをissue、PR、chatへ貼るときに、タイトルとURLを手作業で組み立てる必要をなくすことを目的とする。
 
-貼り付け先の種類が異なるため、1回のコピーで2つのformatを同時に書き込む。`text/plain` は `[#番号 タイトル](PR URL)` のMarkdownリンクとし、GitHubのコメント欄やeditorで使えるようにする。`text/html` は同じラベルとURLの `<a>` 要素とし、Microsoft TeamsやOutlookのようなrich text editorでハイパーリンクとして貼れるようにする。貼り付け先はどちらか適した形式を選ぶ。
+コピーする値は単一の `text/plain` とし、リンクの表示テキスト（`#番号 タイトル`）をtrimした値、改行、PR URLをこの順で連結する。URLはbare URLのまま保持し、貼り付け先の種類に応じたMarkdownやHTMLへの変換は行わない。
 
-Markdown側はタイトルに含まれる `[`、`]`、`\` をエスケープしてリンクが壊れないようにする。HTML側は `<a>` 要素をDOMで組み立てて `outerHTML` を取ることで、属性値と文字参照のescapeを自前で持たない。
-
-`ClipboardItem` を使える場合は `navigator.clipboard.write` で両formatを書き込み、使えない場合は `navigator.clipboard.writeText`、さらに古い環境では一時的な `textarea` と `document.execCommand('copy')` へfallbackし、Markdown側だけを書き込む。いずれも失敗した場合はエラー表示へ回す。
+`navigator.clipboard.writeText` を使える場合はこのプレーンテキストをそのまま書き込み、使えない場合は一時的な `textarea` と `document.execCommand('copy')` へfallbackして同じ値を書き込む。いずれも失敗した場合はエラー表示へ回す。
 
 コピー成功のフィードバックは、押したボタンのiconをPrimer Octicons `check` へ2秒間差し替えて示す。視線をカードから移動させずに済み、GitHubのcopy buttonと同じ挙動になる。複数のボタンを連続して押した場合は、最後に押したボタンの完了だけを表示し、先に押した操作の遅延完了で表示を戻さない。iconの変化を知覚できない利用者向けに、視覚的に隠した `role="status"` のlive regionへコピー完了を通知する。ボタンは16pxに収めてカードの外寸を変えず、タイトル行の末尾に必要最小限の幅を確保する。既定はmuted色、hoverで通常のテキスト色にする。
 
