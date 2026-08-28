@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-28
+
+### Added
+
+- Copy a pull request's number, title, and URL as plain text from its card. Contributed by [@shogidemo](https://github.com/shogidemo) in [#2](https://github.com/orangain/gh-pr-graph/pull/2).
+
 ## [0.14.6] - 2026-08-23
 
 ### Fixed
@@ -20,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified the colors of the pending-review and re-review attention icons.
 
-[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.14.6...HEAD
+[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/orangain/gh-pr-graph/compare/v0.14.6...v0.15.0
 [0.14.6]: https://github.com/orangain/gh-pr-graph/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/orangain/gh-pr-graph/compare/v0.14.4...v0.14.5
