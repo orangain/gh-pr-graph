@@ -21,7 +21,11 @@ jobs:
         with:
           node-version: 22
       - name: Check JavaScript
-        run: node --check internal/server/web/app.js
+        run: |
+          node --check internal/server/web/app.js
+          node --check internal/server/web/clipboard.js
+      - name: Test JavaScript
+        run: node --test internal/server/webtest/refresh_test.js internal/server/webtest/clipboard_test.js
       - name: Test release notes
         run: bash .github/release-notes_test.sh
       - name: Test

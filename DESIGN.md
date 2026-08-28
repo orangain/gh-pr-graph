@@ -70,8 +70,17 @@ PR ノードには以下を表示する。
 - review decision、CI、conflict を表す icon と短い label
 - CI の集約状態、merge conflict（取得可能な場合）
 - 最終更新時刻
+- タイトルと PR URL を単一のプレーンテキストとしてコピーする copy ボタン
 
 タイトルは GitHub の PR URL を新しいタブで開く。ノード全体はキーボードで focus 可能とし、Enter でも詳細を開ける。
+
+タイトル行の末尾にPrimer Octicons `copy` のボタンを置き、クリックでタイトルとPR URLをクリップボードへ書き込む。レビュー依頼や作業メモをissue、PR、chatへ貼るときに、タイトルとURLを手作業で組み立てる必要をなくすことを目的とする。
+
+コピーする値は単一の `text/plain` とし、リンクの表示テキスト（`#番号 タイトル`）をtrimした値、改行、PR URLをこの順で連結する。URLはbare URLのまま保持し、貼り付け先の種類に応じたMarkdownやHTMLへの変換は行わない。
+
+`navigator.clipboard.writeText` を使える場合はこのプレーンテキストをそのまま書き込み、使えない場合は一時的な `textarea` と `document.execCommand('copy')` へfallbackして同じ値を書き込む。いずれも失敗した場合はエラー表示へ回す。
+
+コピー成功のフィードバックは、押したボタンのiconをPrimer Octicons `check` へ2秒間差し替えて示す。視線をカードから移動させずに済み、GitHubのcopy buttonと同じ挙動になる。複数のボタンを連続して押した場合は、最後に押したボタンの完了だけを表示し、先に押した操作の遅延完了で表示を戻さない。iconの変化を知覚できない利用者向けに、視覚的に隠した `role="status"` のlive regionへコピー完了を通知する。ボタンは16pxに収めてカードの外寸を変えず、タイトル行の末尾に必要最小限の幅を確保する。既定はmuted色、hoverで通常のテキスト色にする。
 
 ### 背景色、枠線、状態表示
 
