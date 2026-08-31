@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-01
+
+### Fixed
+
+- Keep automatic refresh active for up to 30 minutes while the browser tab is hidden, then refresh stale data when the tab becomes visible again in [#9](https://github.com/orangain/gh-pr-graph/pull/9).
+
 ## [0.15.0] - 2026-08-28
 
 ### Added
@@ -26,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified the colors of the pending-review and re-review attention icons.
 
-[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/orangain/gh-pr-graph/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/orangain/gh-pr-graph/compare/v0.14.6...v0.15.0
 [0.14.6]: https://github.com/orangain/gh-pr-graph/compare/v0.14.5...v0.14.6
 [0.14.5]: https://github.com/orangain/gh-pr-graph/compare/v0.14.4...v0.14.5
