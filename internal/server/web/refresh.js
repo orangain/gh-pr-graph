@@ -7,7 +7,7 @@
   const retryBaseDelay = 30000
   const retryMaxDelay = 300000
   const minimumDelay = 1000
-  const backgroundRefreshDuration = 60 * 60 * 1000
+  const backgroundRefreshDuration = 30 * 60 * 1000
 
   function retryDelay(failures) {
     return Math.min(retryMaxDelay, retryBaseDelay * (2 ** Math.max(0, failures - 1)))

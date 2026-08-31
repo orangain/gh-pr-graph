@@ -118,7 +118,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 - graph 表示完了から 5 分ごとに現在の検索条件を再取得する。
 - header左上のbrandをprojectのGitHub pageへのlinkとし、hoverまたはkeyboard focus時だけbuild versionを表示する。browser tab titleはスクリーンショットやタブ一覧で簡潔に見えるようversionを含めない。headerには最終更新時刻、次回更新までの時間、自動更新の on/off toggle を表示する。既定は on。
 - 初回取得中だけheader直下にprogress barと`Loading pull requests…`を表示する。初回表示後の自動・手動更新では、progress領域の出現によるviewportの縦ずれを避けるため表示しない。
-- browser tab が非表示になってから60分間は、PRレビュー中にもgraphを新しい状態へ保つためpollingを継続する。非表示の状態が60分を超えた場合、または端末がofflineの間はpollingを止め、再表示／online復帰時に前回更新から5分以上経っていれば即座に更新する。
+- browser tab が非表示になってから30分間は、PRレビュー中にもgraphを新しい状態へ保つためpollingを継続する。非表示の状態が30分を超えた場合、または端末がofflineの間はpollingを止め、再表示／online復帰時に前回更新から5分以上経っていれば即座に更新する。
 - 更新中も現在のgraphをそのまま残し、成功後にnode/edgeの差分を反映してviewportを維持する。
 - 自動更新の失敗時は既存 graph を保持し、非遮断型の警告と再試行ボタンを表示する。失敗直後の自動再試行は30秒から始め、連続失敗ごとに60秒、120秒、240秒と倍増して最大5分で頭打ちにする。成功時に失敗回数をリセットし、手動更新はbackoff中も常に可能にする。tab再表示やonline復帰でも未経過のbackoffを飛ばさない。
 - 検索条件が変更された場合は polling timer をリセットする。同じ query に対する同時リクエストは 1 件にまとめる。
@@ -397,7 +397,7 @@ docs/
 10. ready for review は太枠、draft は細枠と `Draft` badge で識別できる。
 11. reviewer は個人一覧ではなく `承認数 / reviewer 数` で表示され、レビュー、CI、conflict は icon と label で識別できる。
 12. viewerのレビュー後に再度レビュー依頼されたPRは、カード右上の円形`sync` badgeで識別できる。
-13. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示 tab と offline 中は polling しない。
+13. 5 分ごとに自動更新し、更新前にviewport中央付近の表示ノードと画面内offsetを記録して、更新後も同じノードが同じ位置に見えるようscrollを補正する。Included PR更新などで1frame内にrenderが連続する場合は、最初のanchorを保持して古い復元予約をcancelし、最後のrender後に一度だけ復元する。ノードが消えた場合は従来のscroll座標へfallbackする。非表示tabでは30分間pollingを継続し、それ以降とoffline中は停止する。
 14. メイングラフ取得後、browserはPR一覧が確定したgraphをprogress 65%の時点で描画する。commit inspectionのキャッシュを適用し、missした親PRだけ`POST /api/v1/inspect`で最新100 commitを走査する。全候補番号が揃ったらgraphを更新し、progress barを100%にして閉じる。古いcommitが残る場合は件数を`N+`または`?`で表し、paginationしない。リロード中は前回のIncluded PR情報を表示し続ける。100%到達後に先頭3件と末尾3件だけのPR詳細取得を自動開始するが、その進捗は表示せず、トグル操作も通信を発生させない。
 15. GitHub token が frontend、ログ、disk cache に露出しない。
 
