@@ -194,6 +194,16 @@ func buildSearchSpecs(options graph.SearchOptions) []searchSpec {
 	if query := strings.TrimSpace(options.Query); query != "" {
 		queries = append(queries, searchSpec{query: query})
 	}
+	if owner := strings.TrimSpace(options.Owner); owner != "" {
+		for i := range queries {
+			queries[i].query += " user:" + owner
+		}
+	}
+	if repo := strings.TrimSpace(options.Repo); repo != "" {
+		for i := range queries {
+			queries[i].query += " repo:" + repo
+		}
+	}
 	return queries
 }
 

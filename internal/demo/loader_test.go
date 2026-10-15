@@ -60,3 +60,35 @@ func TestLoadProvidesScreenshotScenario(t *testing.T) {
 		t.Fatalf("pending-review PR = %d, want 221", pendingReviewPR)
 	}
 }
+
+func TestLoadFiltersByOwner(t *testing.T) {
+	result, err := New().Load(context.Background(), graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Owner: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) != 0 {
+		t.Fatalf("nodes = %d, want none outside the owner", len(result.Nodes))
+	}
+	result, err = New().Load(context.Background(), graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Owner: "ACME"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) == 0 {
+		t.Fatal("want nodes for case-insensitive owner match")
+	}
+}
+
+func TestLoadFiltersByRepo(t *testing.T) {
+	result, err := New().Load(context.Background(), graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Repo: "acme/beacon"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range result.Nodes {
+		if node.Kind == "pullRequest" && node.PR.Repository != "acme/beacon" {
+			t.Fatalf("repository = %q, want only acme/beacon", node.PR.Repository)
+		}
+	}
+	if len(result.Nodes) == 0 {
+		t.Fatal("want nodes for acme/beacon")
+	}
+}

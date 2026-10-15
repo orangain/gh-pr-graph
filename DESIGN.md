@@ -27,7 +27,7 @@ Press Ctrl-C to stop.
 - `Ctrl-C` で graceful shutdown する。
 - `--no-open` ではブラウザを開かず URL のみ表示する。
 - `--port 8080` でポートを固定できる。listen address は安全のため常に `127.0.0.1` を既定とする。
-- `--repo OWNER/REPO` は対象を限定する。未指定時は複数リポジトリを横断する。
+- `--owner OWNER` は起動中のすべての検索条件（3つの関係checkboxと第4のOR条件）へ`user:OWNER`を付け、そのuserまたはorganizationが所有するリポジトリのPRだけを検索する。GitHub検索では`user:`と`org:`がどちらの所有者種別にも同じ結果を返すため、`gh search prs --owner`に合わせて1つのflagにまとめる。`--repo OWNER/REPO` は同様に`repo:OWNER/REPO`を付け、1つのリポジトリへ限定する。未指定時は複数リポジトリを横断する。両者は範囲が重なり組み合わせる意味がないため相互排他とし、同時指定は起動時エラーにする。値はGitHubのlogin名・repository名の形式だけを受け付け、検索修飾子の注入を防ぐ。画面からは変更できず、URL query parameterでも上書きしない。適用中はheaderの検索欄の前にPrimer Octicons `organization`または`repo`付きのchipで対象名を表示する。上流・下流のstack補完は検索に一致したPRを起点にそのまま行う。
 
 既定の検索集合は以下 3 検索の和集合（PR ID で重複排除）とする。画面では各条件を独立したcheckboxとして表示し、GitHub 検索構文における複雑な OR の解釈差を避けるため、API 内部でも別々に実行する。
 

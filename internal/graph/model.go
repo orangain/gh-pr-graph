@@ -12,6 +12,10 @@ type SearchOptions struct {
 	Authored        bool
 	Assigned        bool
 	ReviewRequested bool
+	// Owner limits every search condition to repositories owned by this user or organization.
+	Owner string
+	// Repo limits every search condition to one OWNER/REPO repository.
+	Repo string
 }
 
 type PullRequest struct {

@@ -45,6 +45,8 @@ Options:
 --no-open          print the URL without opening a browser
 --port 8080        override the preferred local port (8787)
 --hostname HOST    use a GitHub Enterprise hostname
+--owner OWNER      only show pull requests in repositories owned by OWNER
+--repo OWNER/REPO  only show pull requests in one repository (not with --owner)
 ```
 
 ### Using the graph

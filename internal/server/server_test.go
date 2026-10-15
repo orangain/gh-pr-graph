@@ -79,6 +79,36 @@ func TestGraphHandlerReadsExplicitScopes(t *testing.T) {
 	}
 }
 
+func TestGraphHandlerAppliesConfiguredOwner(t *testing.T) {
+	loader := &fakeLoader{}
+	s := New(loader)
+	s.SetOwner("acme")
+	s.graph(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/graph?owner=other", nil))
+	if loader.options.Owner != "acme" {
+		t.Fatalf("owner = %q, want startup owner", loader.options.Owner)
+	}
+	recorder := httptest.NewRecorder()
+	s.meta(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
+	if got := recorder.Body.String(); !strings.Contains(got, `"owner":"acme"`) {
+		t.Errorf("body = %s", got)
+	}
+}
+
+func TestGraphHandlerAppliesConfiguredRepo(t *testing.T) {
+	loader := &fakeLoader{}
+	s := New(loader)
+	s.SetRepo("acme/atlas")
+	s.graph(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/graph?repo=acme/other", nil))
+	if loader.options.Repo != "acme/atlas" || loader.options.Owner != "" {
+		t.Fatalf("options = %+v, want startup repo only", loader.options)
+	}
+	recorder := httptest.NewRecorder()
+	s.meta(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
+	if got := recorder.Body.String(); !strings.Contains(got, `"repo":"acme/atlas"`) || strings.Contains(got, `"owner"`) {
+		t.Errorf("body = %s", got)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	handler := securityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	recorder := httptest.NewRecorder()

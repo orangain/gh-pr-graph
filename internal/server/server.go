@@ -49,6 +49,8 @@ type Server struct {
 	mu      sync.Mutex
 	tracer  oteltrace.Tracer
 	version string
+	owner   string
+	repo    string
 }
 
 func New(loader Loader) *Server { return &Server{loader: loader, version: "dev"} }
@@ -60,6 +62,12 @@ func (s *Server) SetVersion(version string) {
 		s.version = version
 	}
 }
+
+// SetOwner limits every graph search to the user or organization chosen at startup.
+func (s *Server) SetOwner(owner string) { s.owner = owner }
+
+// SetRepo limits every graph search to the repository chosen at startup.
+func (s *Server) SetRepo(repo string) { s.repo = repo }
 
 func (s *Server) Start(port int) (string, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -90,7 +98,14 @@ func (s *Server) Start(port int) (string, error) {
 func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]string{"version": s.version})
+	meta := map[string]string{"version": s.version}
+	if s.owner != "" {
+		meta["owner"] = s.owner
+	}
+	if s.repo != "" {
+		meta["repo"] = s.repo
+	}
+	_ = json.NewEncoder(w).Encode(meta)
 }
 
 func (s *Server) StartPreferred(port int) (string, error) {
@@ -112,6 +127,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	options := searchOptions(r)
+	options.Owner = s.owner
+	options.Repo = s.repo
 	var requestSpan oteltrace.Span
 	if s.tracer != nil {
 		ctx, span := s.tracer.Start(r.Context(), "GET /api/v1/graph", oteltrace.SpanServer, oteltrace.Attributes{

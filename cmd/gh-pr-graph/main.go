@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -19,13 +20,23 @@ const projectURL = "https://github.com/orangain/gh-pr-graph"
 
 var version = "dev"
 
+// ownerPattern and repoPattern accept GitHub names only so the values cannot inject extra search qualifiers.
+var (
+	ownerPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$`)
+	repoPattern  = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$`)
+)
+
 func main() {
 	var port int
 	var noOpen bool
 	var hostname string
+	var owner string
+	var repo string
 	flag.IntVar(&port, "port", server.DefaultPort, "local server port (0 selects a free port)")
 	flag.BoolVar(&noOpen, "no-open", false, "do not open the browser")
 	flag.StringVar(&hostname, "hostname", "", "GitHub hostname (defaults to gh configuration)")
+	flag.StringVar(&owner, "owner", "", "only show pull requests in repositories owned by this user or organization")
+	flag.StringVar(&repo, "repo", "", "only show pull requests in this OWNER/REPO repository")
 	flag.Parse()
 	portExplicit := false
 	flag.Visit(func(current *flag.Flag) {
@@ -35,6 +46,18 @@ func main() {
 	})
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "gh pr-graph: unexpected arguments:", flag.Args())
+		os.Exit(2)
+	}
+	if owner != "" && !ownerPattern.MatchString(owner) {
+		fmt.Fprintln(os.Stderr, "gh pr-graph: invalid --owner:", owner)
+		os.Exit(2)
+	}
+	if repo != "" && !repoPattern.MatchString(repo) {
+		fmt.Fprintln(os.Stderr, "gh pr-graph: invalid --repo (want OWNER/REPO):", repo)
+		os.Exit(2)
+	}
+	if owner != "" && repo != "" {
+		fmt.Fprintln(os.Stderr, "gh pr-graph: --owner and --repo cannot be used together")
 		os.Exit(2)
 	}
 	fmt.Printf("gh pr-graph %s\n%s\n", version, projectURL)
@@ -61,6 +84,8 @@ func main() {
 	}
 	app := server.New(loader)
 	app.SetVersion(version)
+	app.SetOwner(owner)
+	app.SetRepo(repo)
 	if exporter != nil {
 		app.SetTracer(exporter)
 	}

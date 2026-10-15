@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `--owner OWNER` and `--repo OWNER/REPO` to limit every search condition to repositories owned by a user or organization, or to one repository.
+
 ## [0.15.1] - 2026-09-01
 
 ### Fixed

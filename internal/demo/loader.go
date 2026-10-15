@@ -36,7 +36,14 @@ func (l *Loader) LoadProgress(_ context.Context, options graph.SearchOptions, pr
 		}
 	}
 	prs := make([]*graph.PullRequest, 0, len(selected))
+	owner, repo := strings.TrimSpace(options.Owner), strings.TrimSpace(options.Repo)
 	for _, pr := range all {
+		if owner != "" && !strings.EqualFold(strings.SplitN(pr.Repository, "/", 2)[0], owner) {
+			continue
+		}
+		if repo != "" && !strings.EqualFold(pr.Repository, repo) {
+			continue
+		}
 		if selected[pr.ID] {
 			copy := *pr
 			prs = append(prs, &copy)

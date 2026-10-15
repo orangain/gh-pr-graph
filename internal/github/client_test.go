@@ -254,3 +254,27 @@ func TestBuildSearchSpecsTreatsQueryAsFourthORCondition(t *testing.T) {
 		t.Fatalf("specs = %+v, want only custom query", specs)
 	}
 }
+
+func TestBuildSearchSpecsAppliesOwnerToEveryCondition(t *testing.T) {
+	specs := buildSearchSpecs(graph.SearchOptions{Authored: true, Assigned: true, ReviewRequested: true, Query: "label:bug", Owner: "acme"})
+	if len(specs) != 4 {
+		t.Fatalf("specs = %+v, want four conditions", specs)
+	}
+	for _, spec := range specs {
+		if !strings.HasSuffix(spec.query, " user:acme") {
+			t.Fatalf("query = %q, want owner qualifier", spec.query)
+		}
+	}
+}
+
+func TestBuildSearchSpecsAppliesRepoToEveryCondition(t *testing.T) {
+	specs := buildSearchSpecs(graph.SearchOptions{Authored: true, Query: "label:bug", Repo: "acme/atlas"})
+	if len(specs) != 2 {
+		t.Fatalf("specs = %+v, want two conditions", specs)
+	}
+	for _, spec := range specs {
+		if !strings.HasSuffix(spec.query, " repo:acme/atlas") {
+			t.Fatalf("query = %q, want repo qualifier", spec.query)
+		}
+	}
+}
