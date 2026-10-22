@@ -7,14 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-10-23
+
 ### Changed
 
-- Stop background automatic refresh after 15 minutes instead of 30 minutes.
+- Stop background automatic refresh after 15 minutes instead of 30 minutes in [#12](https://github.com/orangain/gh-pr-graph/pull/12).
 
 ### Fixed
 
-- Build release binaries with Go 1.27.3 to include its security fixes.
-- Prevent automatic refresh from waiting for a rendering frame before fetching data in background tabs.
+- Build release binaries with Go 1.27.3 to include its security fixes in [#13](https://github.com/orangain/gh-pr-graph/pull/13).
+- Prevent automatic refresh from waiting for a rendering frame before fetching data in background tabs in [#12](https://github.com/orangain/gh-pr-graph/pull/12).
 
 ## [0.15.1] - 2026-09-01
 
@@ -41,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified the colors of the pending-review and re-review attention icons.
 
-[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/orangain/gh-pr-graph/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/orangain/gh-pr-graph/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/orangain/gh-pr-graph/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/orangain/gh-pr-graph/compare/v0.14.6...v0.15.0
 [0.14.6]: https://github.com/orangain/gh-pr-graph/compare/v0.14.5...v0.14.6
