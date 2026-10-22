@@ -83,7 +83,7 @@ not separate graph nodes.
 
 ## Development
 
-Development requires Go 1.23 or newer.
+Development requires Go 1.23 or newer with automatic toolchain switching enabled (the default). `go.mod` selects Go 1.27.3 or newer for builds; CI and release builds use the same toolchain directive.
 See [DESIGN.md](DESIGN.md) for the architecture and design decisions.
 
 ### Build from source

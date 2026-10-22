@@ -304,6 +304,8 @@ domain model と API DTO は分離する。API は `/v1` で versioning し、fr
 
 ## 9. パッケージ構成
 
+Goの言語バージョンは`go 1.23`を維持し、脆弱性修正を含むbuild toolchainを`go.mod`の`toolchain go1.27.3`で指定する。CIの`actions/setup-go`とReleaseの`cli/gh-extension-precompile`はともに`go.mod`を読み、toolchain指定を優先してGo 1.27.3を選択する。ローカルでも既定の自動toolchain切り替えでは1.27.3以上を使う。最新安定版への自動追従はせず、今後の修正版を採用するときはtoolchain指定を更新する。
+
 ```text
 cmd/gh-pr-graph/main.go
 internal/
