@@ -21,7 +21,8 @@ test('failure delay does not depend on the last successful refresh', () => {
   assert.equal(nextDelay(now + 29000, 0, 1, retryAt), 1000)
 })
 
-test('background refresh remains enabled for thirty minutes', () => {
+test('background refresh stops after fifteen minutes', () => {
+  assert.equal(backgroundRefreshDuration, 15 * 60 * 1000)
   const hiddenSince = 1000
   assert.equal(canRefreshInBackground(hiddenSince + backgroundRefreshDuration - 1, hiddenSince), true)
   assert.equal(canRefreshInBackground(hiddenSince + backgroundRefreshDuration, hiddenSince), false)

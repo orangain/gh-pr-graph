@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Stop background automatic refresh after 15 minutes instead of 30 minutes.
+
 ### Fixed
 
 - Prevent automatic refresh from waiting for a rendering frame before fetching data in background tabs.
