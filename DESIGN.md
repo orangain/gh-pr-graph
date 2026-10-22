@@ -115,6 +115,7 @@ reviewer の avatar や login は通常表示しない。review summary の分�
 
 ### 自動更新
 
+- データ取得は`requestAnimationFrame`の完了に依存させない。非表示tabでは描画frameが保留されるため、描画予約と通信の進行を切り離す。
 - graph 表示完了から 5 分ごとに現在の検索条件を再取得する。
 - header左上のbrandをprojectのGitHub pageへのlinkとし、hoverまたはkeyboard focus時だけbuild versionを表示する。browser tab titleはスクリーンショットやタブ一覧で簡潔に見えるようversionを含めない。headerには最終更新時刻、次回更新までの時間、自動更新の on/off toggle を表示する。既定は on。
 - 初回取得中だけheader直下にprogress barと`Loading pull requests…`を表示する。初回表示後の自動・手動更新では、progress領域の出現によるviewportの縦ずれを避けるため表示しない。

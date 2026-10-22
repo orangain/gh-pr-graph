@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent automatic refresh from waiting for a rendering frame before fetching data in background tabs.
+
 ## [0.15.1] - 2026-09-01
 
 ### Fixed
